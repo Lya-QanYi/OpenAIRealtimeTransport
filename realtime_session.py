@@ -249,16 +249,19 @@ class RealtimeSession:
         """
         logger.info(f"转录结果: {text}")
         
-        # 发送转录完成事件
-        if self.state.current_audio_item_id:
+        # 捕获并清空 item_id，避免残留 stale id
+        item_id = self.state.current_audio_item_id
+        self.state.current_audio_item_id = None
+
+        if item_id:
             if text:
                 await self.transport.send_transcription_completed(
-                    item_id=self.state.current_audio_item_id,
+                    item_id=item_id,
                     transcript=text
                 )
             else:
                 await self.transport.send_transcription_failed(
-                    item_id=self.state.current_audio_item_id,
+                    item_id=item_id,
                     error_message="No speech detected or transcription empty"
                 )
     

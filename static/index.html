@@ -6,10 +6,10 @@
   <title>Realtime Voice Chat</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>">
   <!-- Markdown / Code-highlight -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" crossorigin="anonymous"></script>
   <style>
     /* ============================== Reset & Variables ============================== */
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -779,10 +779,9 @@
     }
     const raw = marked.parse(text);
     return DOMPurify.sanitize(raw, {
-      ADD_TAGS: ['iframe'],
       ADD_ATTR: ['target', 'rel', 'class'],
       ALLOW_DATA_ATTR: false,
-      FORBID_TAGS: ['style', 'script'],
+      FORBID_TAGS: ['style', 'script', 'iframe'],
       FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
     });
   }
@@ -1044,7 +1043,9 @@
         try {
           const event = JSON.parse(e.data);
           this._handleEvent(event);
-        } catch { /* ignore parse errors */ }
+        } catch (err) {
+          console.warn('WebSocket JSON parse error:', err, 'raw:', e.data?.slice?.(0, 200));
+        }
       };
 
       this.ws.onclose = () => {

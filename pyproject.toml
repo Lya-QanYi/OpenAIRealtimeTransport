@@ -30,14 +30,14 @@ dependencies = [
 
     # TTS: Edge TTS (免费)
     "edge-tts>=6.1.0",
-
-    # PyTorch - Silero VAD 运行时
-    "torch>=1.12.0",
-    # torchaudio - 某些音频处理路径/依赖会显式 import torchaudio
-    "torchaudio>=0.12.0",
 ]
 
 [project.optional-dependencies]
+# Silero VAD 运行时需要 PyTorch
+vad = [
+    "torch>=1.12.0",
+    "torchaudio>=0.12.0",
+]
 # 本地 Whisper STT
 whisper = [
     "openai-whisper>=20231117",

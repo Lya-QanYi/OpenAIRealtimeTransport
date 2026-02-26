@@ -305,7 +305,7 @@ def print_config():
         print(f"  - Voice: {config.tts.tts_voice}")
 
     # VAD
-    print(f"VAD 配置:")
+    print("VAD 配置:")
     print(f"  - 阈值: {config.vad.threshold}")
     print(f"  - 静音时长: {config.vad.silence_duration_ms}ms")
 

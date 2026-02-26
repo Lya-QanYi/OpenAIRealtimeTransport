@@ -476,7 +476,11 @@
 
       } catch (err) {
         console.error('Failed to load config:', err);
-        this.$.loading.innerHTML = '<p style="color:var(--danger)">加载配置失败: ' + err.message + '</p>';
+        const errP = document.createElement('p');
+        errP.style.color = 'var(--danger)';
+        errP.textContent = '加载配置失败: ' + err.message;
+        this.$.loading.innerHTML = '';
+        this.$.loading.appendChild(errP);
       }
     }
 
@@ -528,7 +532,11 @@
       // Label
       const label = document.createElement('div');
       label.className = 'field-label';
-      label.innerHTML = `${item.label} <span class="field-key">${item.key}</span>`;
+      label.textContent = item.label + ' ';
+      const keySpan = document.createElement('span');
+      keySpan.className = 'field-key';
+      keySpan.textContent = item.key;
+      label.appendChild(keySpan);
       field.appendChild(label);
 
       const currentVal = this.currentValues[item.key] ?? item.default ?? '';

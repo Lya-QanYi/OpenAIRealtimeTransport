@@ -337,11 +337,14 @@ class OpenAIRealtimeTransport:
         self.state.current_item = item
         
         # 提取文本内容并注入 LLM 上下文
-        text_content = ""
+        text_parts: list[str] = []
         for content_part in item.content:
             if isinstance(content_part, dict):
                 if content_part.get("type") in ("input_text", "text"):
-                    text_content += content_part.get("text", "")
+                    t = content_part.get("text", "")
+                    if t:
+                        text_parts.append(t)
+        text_content = " ".join(text_parts)
         
         if text_content and self._on_text_message:
             await self._on_text_message(text_content)

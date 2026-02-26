@@ -179,8 +179,7 @@ async def api_info():
 
 # ==================== 配置管理 API ====================
 
-_ENV_FILE = Path(__file__).parent / ".env"
-_ENV_EXAMPLE_FILE = Path(__file__).parent / ".env.example"
+from config import _ENV_FILE, _ENV_EXAMPLE_FILE
 
 # 配置项元数据：定义 WebUI 设置面板展示的字段信息
 CONFIG_SCHEMA: list[dict] = [
@@ -253,6 +252,13 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
     written_keys: set[str] = set()
     output_lines: list[str] = []
 
+    def _format_env_value(k: str, v: str) -> str:
+        """Format a key=value pair, quoting and escaping as needed."""
+        if " " in v or "#" in v or "'" in v or '"' in v:
+            escaped = v.replace('\\', '\\\\').replace('"', '\\"')
+            return f'{k}="{escaped}"'
+        return f"{k}={v}"
+
     for line in existing_lines:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -264,12 +270,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         key, _, _ = stripped.partition("=")
         key = key.strip()
         if key in values:
-            val = values[key]
-            # 包含空格或特殊字符时用引号包裹
-            if " " in val or "#" in val or "'" in val:
-                output_lines.append(f'{key}="{val}"')
-            else:
-                output_lines.append(f"{key}={val}")
+            output_lines.append(_format_env_value(key, values[key]))
             written_keys.add(key)
         else:
             output_lines.append(line)
@@ -277,10 +278,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
     # 追加新增的 key
     for key, val in values.items():
         if key not in written_keys:
-            if " " in val or "#" in val or "'" in val:
-                output_lines.append(f'{key}="{val}"')
-            else:
-                output_lines.append(f"{key}={val}")
+            output_lines.append(_format_env_value(key, val))
 
     path.write_text("\n".join(output_lines) + "\n", encoding="utf-8")
 
@@ -310,8 +308,14 @@ async def get_config():
 
 
 @app.get("/api/config/raw")
-async def get_config_raw():
-    """读取 .env 原始值（密钥不脱敏，前端写回时使用）"""
+async def get_config_raw(request: Request):
+    """读取 .env 原始值（密钥不脱敏，仅 DEBUG+localhost 可用）"""
+    # 安全检查：仅在 DEBUG 模式且请求来自 localhost 时允许
+    debug = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
+    client_host = request.client.host if request.client else ""
+    is_local = client_host in ("127.0.0.1", "::1", "localhost")
+    if not (debug and is_local):
+        raise HTTPException(status_code=403, detail="仅允许在调试模式下从本机访问原始配置")
     values = _parse_env_file(_ENV_FILE)
     return {"values": values}
 
@@ -324,6 +328,16 @@ async def save_config(request: Request):
 
     if not values:
         raise HTTPException(status_code=400, detail="没有提供任何配置项")
+
+    # 校验：仅接受 CONFIG_SCHEMA 中定义的 key
+    valid_keys = {item["key"] for item in CONFIG_SCHEMA}
+    unknown_keys = set(values.keys()) - valid_keys
+    if unknown_keys:
+        raise HTTPException(
+            status_code=400,
+            detail=f"未知的配置项: {', '.join(sorted(unknown_keys))}。"
+                   f"允许的 key 请参考 /api/config/schema"
+        )
 
     # 如果 .env 不存在，先从 .env.example 复制一份作为模板
     if not _ENV_FILE.exists() and _ENV_EXAMPLE_FILE.exists():

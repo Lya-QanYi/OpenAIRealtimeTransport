@@ -509,17 +509,20 @@ class ServerEventBuilder:
     def response_function_call_arguments_delta(
         response_id: str, item_id: str,
         delta: str, output_index: int = 0,
-        call_id: Optional[str] = None,
+        *, call_id: str,
         event_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """构建函数调用参数增量事件"""
+        """构建函数调用参数增量事件
+
+        call_id 为必填参数，调用方须传入同一 call_id 以关联 delta 与 done 事件。
+        """
         return {
             "event_id": event_id or generate_id("evt"),
             "type": ServerEventType.RESPONSE_FUNCTION_CALL_ARGUMENTS_DELTA.value,
             "response_id": response_id,
             "item_id": item_id,
             "output_index": output_index,
-            "call_id": call_id or generate_id("call"),
+            "call_id": call_id,
             "delta": delta,
         }
 
@@ -527,17 +530,20 @@ class ServerEventBuilder:
     def response_function_call_arguments_done(
         response_id: str, item_id: str,
         arguments: str, output_index: int = 0,
-        call_id: Optional[str] = None,
+        *, call_id: str,
         event_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """构建函数调用参数完成事件"""
+        """构建函数调用参数完成事件
+
+        call_id 为必填参数，调用方须传入同一 call_id 以关联 delta 与 done 事件。
+        """
         return {
             "event_id": event_id or generate_id("evt"),
             "type": ServerEventType.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE.value,
             "response_id": response_id,
             "item_id": item_id,
             "output_index": output_index,
-            "call_id": call_id or generate_id("call"),
+            "call_id": call_id,
             "arguments": arguments,
         }
 

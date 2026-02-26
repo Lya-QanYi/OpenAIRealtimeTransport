@@ -825,21 +825,18 @@ class PipelineManager:
         """将文本消息注入 LLM 对话历史上下文
         
         当客户端通过 conversation.item.create 发送文本内容时调用此方法，
-        将文本保存为待处理输入并注入 LLM 对话历史。
+        将文本保存到对话历史。仅当 role == "user" 时设置为待处理输入
+        （后续由 LLMService.process 负责推入 provider 历史，避免重复追加）。
         
         Args:
             text: 文本内容
             role: 角色 (user/assistant/system)
         """
-        self._pending_text_input = text
         self._conversation_history.append({"role": role, "content": text})
         
-        # 同时将历史注入 LLM provider 的对话历史（如果支持）
-        if self.llm and self.llm._provider:
-            if hasattr(self.llm._provider, '_conversation_history'):
-                self.llm._provider._conversation_history.append(
-                    {"role": role, "content": text}
-                )
+        # 仅用户消息才标记为待处理输入
+        if role == "user":
+            self._pending_text_input = text
         
         logger.info(f"文本消息已注入 LLM 上下文: [{role}] {text[:50]}...")
     

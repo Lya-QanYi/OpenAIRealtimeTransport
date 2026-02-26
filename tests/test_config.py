@@ -310,7 +310,16 @@ class TestEnvExampleCompleteness:
         assert "localhost" in example_content
 
     def test_each_preset_has_four_fields(self, example_content):
-        """每个 LLM 预设应包含完整四要素 (在注释块中)"""
+        """每个 LLM 预设应包含完整四要素 (在注释块中)
+
+        .env.example 中的 LLM 预设块约定如下：
+        - 以 "预设:" 或 "预设：" 开头的注释行标识新块开始
+        - 块内包含注释行和/或非注释配置行（活跃预设）
+        - 空行或下一个"预设:"行表示当前块结束
+        - 每个块内必须包含 LLM_MODEL_NAME/LLM_BASE_URL/LLM_MODEL_ID/LLM_API_KEY 四个字段
+        - 解析变量: preset_blocks(所有预设块), current_block(当前块行),
+          in_preset(是否在块内), four_keys(必须包含的 4 个 key)
+        """
         lines = example_content.splitlines()
         # 找所有 "预设:" 块
         preset_blocks: list[list[str]] = []
