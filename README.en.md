@@ -10,13 +10,13 @@ A local WebSocket server that mirrors the OpenAI Realtime API protocol, so you c
 - 🔌 **Pluggable backends**: Uses an internal pipeline to connect STT/LLM/TTS providers (Deepgram, Ollama/Llama, ElevenLabs, SiliconFlow, etc.)
 - 🚀 **Minimal client changes**: Usually only change `baseUrl` to point to this server
 - 🎤 **Built-in Server VAD**: Integrates VAD (Silero when available) for hands-free “open mic” mode
-- 🎙️ **Terminal client included**: A full TUI client for voice interaction
+- � **Browser WebUI**: Built-in browser voice interaction interface, no extra client installation needed
 - 🌟 **SiliconFlow supported**: Faster & cheaper in mainland China; see [SILICONFLOW.md](SILICONFLOW.md)
 
 ## 📁 Project Structure
 
 ```
-├── main.py                 # FastAPI server entry
+├── main.py                 # FastAPI server entry (serves WebUI static files)
 ├── config.py               # Config management (.env supported)
 ├── logger_config.py        # Logging configuration module
 ├── service_providers.py    # STT/LLM/TTS provider implementations
@@ -24,31 +24,51 @@ A local WebSocket server that mirrors the OpenAI Realtime API protocol, so you c
 ├── transport.py            # WebSocket Transport layer (protocol translator)
 ├── pipeline_manager.py     # Pipeline manager
 ├── realtime_session.py     # Session lifecycle manager
-├── audio_utils.py          # Audio utilities (resampling/playback, etc.)
-├── push_to_talk_app.py     # Terminal client (open-mic mode)
+├── audio_utils.py          # Audio utilities (resampling, etc.)
+├── static/                 # Browser WebUI static files
+│   ├── index.html          # WebUI main page
+│   └── audio-worklet.js    # Web Audio processors
+├── push_to_talk_app.py     # WebUI launcher (starts server + opens browser)
 ├── test_client.py          # Simple test client
-└── requirements.txt        # Python dependencies
+├── pyproject.toml          # Project config & dependency definitions
+├── requirements.txt        # pip dependency list (fallback)
+└── .python-version         # Python version constraint (3.10)
 ```
 
 ## 🚀 Quick Start
 
 ### 1) Install dependencies
 
+> This project uses [uv](https://docs.astral.sh/uv/) to manage dependencies and virtual environments.
+>
+> Install uv:
+> - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+> - Linux/Mac: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 ```bash
-# Option 1: create a venv (recommended)
+# Create venv and install all dependencies in one step
+uv sync
+
+# Include local Whisper STT
+uv sync --extra whisper
+```
+
+<details>
+<summary>📌 Without uv (pip fallback)</summary>
+
+```bash
 python -m venv .venv
 
 # Activate venv
 # Windows PowerShell:
 .\.venv\Scripts\Activate.ps1
-# Windows CMD:
-.venv\Scripts\activate.bat
 # Linux/Mac:
 source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
+</details>
 
 ### 2) Configure services (important)
 
@@ -77,32 +97,38 @@ More docs:
 ### 3) Start the server
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # or
-python main.py
+uv run python main.py
 ```
 
 ### 4) Run a client
 
-#### Option A: Terminal UI client (recommended)
+#### Option A: Browser WebUI (recommended)
+
+The server includes a built-in WebUI. After starting the server, open your browser:
 
 ```bash
-pip install textual sounddevice
-python push_to_talk_app.py
+# Open in browser
+http://localhost:8000
+
+# Or use the launcher (starts server + opens browser automatically)
+uv run python push_to_talk_app.py
 ```
 
 Notes:
-- Speak directly to the microphone; Server VAD detects speech automatically
-- Press **Q** to quit
-- Default URL: `ws://localhost:8000/v1/realtime`
-- You can set `USE_LOCAL_SERVER = False` inside the client to use OpenAI instead
+- Click the microphone button to start/stop voice capture
+- Server VAD detects speech automatically
+- You can also type text messages
+- Auto-reconnects on disconnect
+- Supports speech interruption (speaking stops AI audio playback)
 
 #### Option B: Simple test client
 
 ```bash
-python test_client.py
-python test_client.py -i
+uv run python test_client.py
+uv run python test_client.py -i
 ```
 
 #### Option C: Use OpenAI SDK (pointing to this server)
@@ -143,7 +169,6 @@ Client ← OpenAI-style JSON ← Transport (translate) ← (VAD → STT → LLM 
 4. **Audio Utilities** ([audio_utils.py](audio_utils.py))
    - Audio resampling (24kHz ↔ 16kHz)
    - Audio buffer management
-   - Async audio player for client
 
 ## 📊 Supported Services
 

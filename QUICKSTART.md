@@ -28,7 +28,8 @@
 
 3. **首次运行会下载 Whisper 模型**
    ```bash
-   python main.py
+   uv sync --extra whisper
+   uv run python main.py
    ```
 
 **优点**: 完全免费，数据隐私
@@ -63,7 +64,7 @@
 
 2. **启动服务**
    ```bash
-   python main.py
+   uv run python main.py
    ```
 
 **优点**: 性能好，成本低，国内访问快
@@ -94,7 +95,7 @@
 
 2. **启动服务**
    ```bash
-   python main.py
+   uv run python main.py
    ```
 
 **优点**: 最高质量，最快速度
@@ -131,17 +132,33 @@
 
 ### 1. 安装依赖
 
+> 本项目使用 [uv](https://docs.astral.sh/uv/) 管理依赖和虚拟环境。
+
 ```bash
+# 安装 uv（如尚未安装）
+# Windows:
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# Linux/Mac:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 一键创建虚拟环境并安装所有依赖
+uv sync
+```
+
+<details>
+<summary>不使用 uv 的替代方案</summary>
+
+```bash
+python -m venv .venv
+
 # 激活虚拟环境
 .\.venv\Scripts\Activate.ps1  # Windows PowerShell
-# 或
-.venv\Scripts\activate.bat    # Windows CMD
-# 或
 source .venv/bin/activate      # Linux/Mac
 
-# 安装所有依赖
+# 安装依赖
 pip install -r requirements.txt
 ```
+</details>
 
 ### 2. 配置环境变量
 
@@ -159,39 +176,41 @@ nano .env     # Linux/Mac
 
 ```bash
 # 开发模式（自动重载）
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # 或直接运行
-python main.py
+uv run python main.py
 ```
 
-### 4. 启动客户端
+### 4. 打开客户端
 
-**打开新的终端窗口：**
+服务器启动后，在浏览器中打开：
 
 ```bash
-# 激活虚拟环境
-.\.venv\Scripts\Activate.ps1
+# 方法 A: 直接在浏览器中打开
+http://localhost:8000
 
-# 运行客户端
-python push_to_talk_app.py
+# 方法 B: 使用启动器（自动启动服务+打开浏览器）
+uv run python push_to_talk_app.py
 ```
 
 ### 5. 开始对话
 
-- 直接对着麦克风说话即可
-- Server VAD 自动检测语音开始和结束
+- 点击麦克风按钮开始监听
+- 直接对着麦克风说话，Server VAD 自动检测语音开始和结束
+- 也可以在文本框中输入文字消息
 - AI 响应会自动播放
-- 按 **Q** 键退出
 
 ---
 
 ## 🔍 验证配置
 
+### 验证配置
+
 运行以下命令查看当前配置：
 
 ```bash
-python -c "from config import config, print_config; print_config()"
+uv run python -c "from config import config, print_config; print_config()"
 ```
 
 输出示例：
@@ -240,7 +259,7 @@ VAD 配置:
 **原因**: 自由麦模式下的 Silero VAD 推理会直接 `import torch`，如果未安装 PyTorch (`torch`) 将无法启用
 
 **解决**:
-- 安装/升级 PyTorch：`pip install torch`（也可按你的 CUDA/CPU 环境选择官方安装命令）
+- 安装/升级 PyTorch：`uv add torch`（也可按你的 CUDA/CPU 环境选择官方安装命令）
 
 ### 5. Ollama 连接失败
 
@@ -253,15 +272,12 @@ VAD 配置:
 
 ### 6. 麦克风无法识别
 
-**问题**: 客户端无法捕获音频
+**问题**: 浏览器无法捕获音频
 
 **解决**:
-```bash
-# 查看可用音频设备
-python -c "import sounddevice as sd; print(sd.query_devices())"
-
-# 在 push_to_talk_app.py 中指定设备 ID
-```
+- 确保使用 HTTPS 或 localhost 访问（浏览器安全策略要求）
+- 检查浏览器是否已授予麦克风权限
+- 尝试使用 Chrome 或 Edge 浏览器（对 AudioWorklet 支持最好）
 
 ---
 

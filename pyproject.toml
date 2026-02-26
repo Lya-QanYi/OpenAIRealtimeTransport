@@ -1,7 +1,60 @@
 [project]
 name = "openai-realtime-transport"
 version = "0.1.0"
+description = "OpenAI Realtime API 兼容服务器 - 使用本地或第三方模型替代 OpenAI"
 requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+
+dependencies = [
+    # Web 框架
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
+
+    # 音频处理
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+
+    # 环境变量加载
+    "python-dotenv>=1.0.0",
+
+    # HTTP 异步客户端
+    "aiohttp>=3.9.0",
+
+    # STT: Deepgram
+    "deepgram-sdk>=5.0.0",
+
+    # LLM / STT (OpenAI SDK)
+    "openai>=1.0.0",
+
+    # TTS: Edge TTS (免费)
+    "edge-tts>=6.1.0",
+
+    # PyTorch - Silero VAD 运行时
+    "torch>=1.12.0",
+    # torchaudio - 某些音频处理路径/依赖会显式 import torchaudio
+    "torchaudio>=0.12.0",
+]
+
+[project.optional-dependencies]
+# 本地 Whisper STT
+whisper = [
+    "openai-whisper>=20231117",
+]
+# 开发 / 测试
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.4.0",
+]
 
 [tool.ruff]
 target-version = "py310"

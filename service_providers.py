@@ -653,8 +653,8 @@ class ServiceFactory:
                 language=kwargs.get("language", os.getenv("DEEPGRAM_LANGUAGE", "zh-CN"))
             ),
             "openai_whisper": lambda: OpenAIWhisperSTTProvider(
-                api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY", "")),
-                base_url=kwargs.get("base_url", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+                api_key=kwargs.get("api_key", ""),
+                base_url=kwargs.get("base_url", "https://api.openai.com/v1")
             ),
             "local_whisper": lambda: LocalWhisperSTTProvider(
                 model=kwargs.get("model", os.getenv("WHISPER_MODEL", "base"))
@@ -668,35 +668,25 @@ class ServiceFactory:
         return providers[provider]()
     
     @staticmethod
-    def create_llm_provider(provider: str, **kwargs) -> BaseLLMProvider:
-        """创建 LLM 服务提供商"""
-        providers = {
-            "openai": lambda: OpenAILLMProvider(
-                api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY", "")),
-                model=kwargs.get("model", os.getenv("OPENAI_MODEL", "gpt-4o")),
-                base_url=kwargs.get("base_url", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
-                temperature=float(kwargs.get("temperature", os.getenv("LLM_TEMPERATURE", "0.7"))),
-                max_tokens=int(kwargs.get("max_tokens", os.getenv("LLM_MAX_TOKENS", "4096")))
-            ),
-            "ollama": lambda: OllamaLLMProvider(
-                base_url=kwargs.get("base_url", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")),
-                model=kwargs.get("model", os.getenv("OLLAMA_MODEL", "llama3:8b")),
-                temperature=float(kwargs.get("temperature", os.getenv("LLM_TEMPERATURE", "0.7")))
-            ),
-            "siliconflow": lambda: OpenAILLMProvider(
-                api_key=kwargs.get("api_key", os.getenv("SILICONFLOW_API_KEY", "")),
-                model=kwargs.get("model", os.getenv("SILICONFLOW_MODEL", "Qwen/Qwen2.5-7B-Instruct")),
-                base_url=kwargs.get("base_url", os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")),
-                temperature=float(kwargs.get("temperature", os.getenv("LLM_TEMPERATURE", "0.7"))),
-                max_tokens=int(kwargs.get("max_tokens", os.getenv("LLM_MAX_TOKENS", "4096")))
-            )
-        }
-        
-        if provider not in providers:
-            raise ValueError(f"未知的 LLM 服务提供商: {provider}. 可选: {list(providers.keys())}")
-        
-        logger.info(f"创建 LLM 服务: {provider}")
-        return providers[provider]()
+    def create_llm_provider(**kwargs) -> BaseLLMProvider:
+        """创建 LLM 服务提供商（统一 OpenAI 兼容格式）
+
+        Kwargs:
+            api_key:     API 密钥
+            model:       模型 ID
+            base_url:    API Base URL
+            temperature: 生成温度
+            max_tokens:  最大 token 数
+        """
+        provider = OpenAILLMProvider(
+            api_key=kwargs.get("api_key", os.getenv("LLM_API_KEY", "")),
+            model=kwargs.get("model", os.getenv("LLM_MODEL_ID", "gpt-4o")),
+            base_url=kwargs.get("base_url", os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")),
+            temperature=float(kwargs.get("temperature", os.getenv("LLM_TEMPERATURE", "0.7"))),
+            max_tokens=int(kwargs.get("max_tokens", os.getenv("LLM_MAX_TOKENS", "4096")))
+        )
+        logger.info("创建 LLM 服务: OpenAI 兼容 (base_url=%s, model=%s)", provider.base_url, provider.model)
+        return provider
     
     @staticmethod
     def create_tts_provider(provider: str, **kwargs) -> BaseTTSProvider:
@@ -711,10 +701,10 @@ class ServiceFactory:
                 voice=kwargs.get("voice", os.getenv("EDGE_TTS_VOICE", "zh-CN-XiaoxiaoNeural"))
             ),
             "openai_tts": lambda: OpenAITTSProvider(
-                api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY", "")),
-                voice=kwargs.get("voice", os.getenv("OPENAI_TTS_VOICE", "alloy")),
-                model=kwargs.get("model", os.getenv("OPENAI_TTS_MODEL", "tts-1")),
-                base_url=kwargs.get("base_url", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+                api_key=kwargs.get("api_key", ""),
+                voice=kwargs.get("voice", os.getenv("TTS_VOICE", "alloy")),
+                model=kwargs.get("model", os.getenv("TTS_MODEL_ID", "tts-1")),
+                base_url=kwargs.get("base_url", "https://api.openai.com/v1")
             )
         }
         

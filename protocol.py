@@ -470,6 +470,78 @@ class ServerEventBuilder:
         }
     
     @staticmethod
+    def conversation_item_input_audio_transcription_completed(
+        item_id: str,
+        content_index: int = 0,
+        transcript: str = "",
+        event_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """构建输入音频转录完成事件 - STT 完成后通知客户端"""
+        return {
+            "event_id": event_id or generate_id("evt"),
+            "type": ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED.value,
+            "item_id": item_id,
+            "content_index": content_index,
+            "transcript": transcript,
+        }
+
+    @staticmethod
+    def conversation_item_input_audio_transcription_failed(
+        item_id: str,
+        content_index: int = 0,
+        error_message: str = "Transcription failed",
+        error_type: str = "transcription_error",
+        event_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """构建输入音频转录失败事件"""
+        return {
+            "event_id": event_id or generate_id("evt"),
+            "type": ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_FAILED.value,
+            "item_id": item_id,
+            "content_index": content_index,
+            "error": {
+                "type": error_type,
+                "message": error_message,
+            },
+        }
+
+    @staticmethod
+    def response_function_call_arguments_delta(
+        response_id: str, item_id: str,
+        delta: str, output_index: int = 0,
+        call_id: Optional[str] = None,
+        event_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """构建函数调用参数增量事件"""
+        return {
+            "event_id": event_id or generate_id("evt"),
+            "type": ServerEventType.RESPONSE_FUNCTION_CALL_ARGUMENTS_DELTA.value,
+            "response_id": response_id,
+            "item_id": item_id,
+            "output_index": output_index,
+            "call_id": call_id or generate_id("call"),
+            "delta": delta,
+        }
+
+    @staticmethod
+    def response_function_call_arguments_done(
+        response_id: str, item_id: str,
+        arguments: str, output_index: int = 0,
+        call_id: Optional[str] = None,
+        event_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """构建函数调用参数完成事件"""
+        return {
+            "event_id": event_id or generate_id("evt"),
+            "type": ServerEventType.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE.value,
+            "response_id": response_id,
+            "item_id": item_id,
+            "output_index": output_index,
+            "call_id": call_id or generate_id("call"),
+            "arguments": arguments,
+        }
+
+    @staticmethod
     def rate_limits_updated(rate_limits: Optional[List[Dict[str, Any]]] = None,
                             event_id: Optional[str] = None) -> Dict[str, Any]:
         """构建速率限制更新事件"""

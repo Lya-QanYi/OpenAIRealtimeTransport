@@ -35,7 +35,7 @@ SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
 ### 3. 启动服务
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
 服务器启动时会显示：
@@ -128,7 +128,7 @@ ELEVENLABS_API_KEY=your-key
 运行以下命令测试配置：
 
 ```bash
-python -c "from service_providers import ServiceFactory; provider = ServiceFactory.create_llm_provider('siliconflow'); print('SiliconFlow LLM provider created successfully!')"
+uv run python -c "from service_providers import ServiceFactory; provider = ServiceFactory.create_llm_provider('siliconflow'); print('SiliconFlow LLM provider created successfully!')"
 ```
 
 ## 切换模型
