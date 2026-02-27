@@ -283,12 +283,19 @@ class STTService(BaseService):
         # 从配置创建 STT 提供商
         self._provider: Optional[BaseSTTProvider] = None
         try:
-            self._provider = ServiceFactory.create_stt_provider(
-                config.stt.provider,
-                api_key=config.stt.deepgram_api_key,
-                model=config.stt.deepgram_model if config.stt.provider == "deepgram" else config.stt.whisper_model,
-                language=config.stt.deepgram_language
-            )
+            if config.stt.provider == "openai_whisper":
+                self._provider = ServiceFactory.create_stt_provider(
+                    "openai_whisper",
+                    api_key=config.stt.get_whisper_api_key(config.llm.api_key),
+                    base_url=config.stt.get_whisper_base_url(config.llm.base_url),
+                )
+            else:
+                self._provider = ServiceFactory.create_stt_provider(
+                    config.stt.provider,
+                    api_key=config.stt.deepgram_api_key,
+                    model=config.stt.deepgram_model if config.stt.provider == "deepgram" else config.stt.whisper_model,
+                    language=config.stt.deepgram_language
+                )
             logger.info(f"STT 服务初始化完成: {config.stt.provider}")
         except Exception as e:
             logger.warning(f"STT 服务初始化失败，将使用模拟模式: {e}")
@@ -348,35 +355,17 @@ class LLMService(BaseService):
         self._on_response_chunk: Optional[Callable[[str], Awaitable[None]]] = None
         self._on_response_end: Optional[Callable[[str], Awaitable[None]]] = None
         
-        # 从配置创建 LLM 提供商
+        # 从配置创建 LLM 提供商（统一 OpenAI 兼容格式）
         self._provider: Optional[BaseLLMProvider] = None
         try:
-            if config.llm.provider == "openai":
-                self._provider = ServiceFactory.create_llm_provider(
-                    "openai",
-                    api_key=config.llm.openai_api_key,
-                    model=config.llm.openai_model,
-                    base_url=config.llm.openai_base_url,
-                    temperature=config.llm.temperature,
-                    max_tokens=config.llm.max_tokens
-                )
-            elif config.llm.provider == "ollama":
-                self._provider = ServiceFactory.create_llm_provider(
-                    "ollama",
-                    base_url=config.llm.ollama_base_url,
-                    model=config.llm.ollama_model,
-                    temperature=config.llm.temperature
-                )
-            elif config.llm.provider == "siliconflow":
-                self._provider = ServiceFactory.create_llm_provider(
-                    "siliconflow",
-                    api_key=config.llm.siliconflow_api_key,
-                    model=config.llm.siliconflow_model,
-                    base_url=config.llm.siliconflow_base_url,
-                    temperature=config.llm.temperature,
-                    max_tokens=config.llm.max_tokens
-                )
-            logger.info(f"LLM 服务初始化完成: {config.llm.provider}")
+            self._provider = ServiceFactory.create_llm_provider(
+                api_key=config.llm.api_key,
+                model=config.llm.model_id,
+                base_url=config.llm.base_url,
+                temperature=config.llm.temperature,
+                max_tokens=config.llm.max_tokens
+            )
+            logger.info(f"LLM 服务初始化完成: {config.llm.model_name or config.llm.model_id}")
         except Exception as e:
             logger.warning(f"LLM 服务初始化失败，将使用模拟模式: {e}")
             self._provider = None
@@ -396,6 +385,18 @@ class LLMService(BaseService):
     def update_instructions(self, instructions: str):
         """更新系统提示词"""
         self.instructions = instructions
+    
+    def inject_context_message(self, role: str, content: str):
+        """将消息直接注入 LLM provider 的对话历史
+
+        用于同步 PipelineManager 的外部上下文（assistant/system 角色的消息）
+        到 provider，使其在后续 generate_stream 中能看到完整对话。
+        不要用于 user 消息——user 消息通过 generate_stream 的 prompt 参数传入，
+        provider 会自行追加到历史中。
+        """
+        if self._provider and hasattr(self._provider, '_conversation_history'):
+            self._provider._conversation_history.append({"role": role, "content": content})
+            logger.debug(f"上下文消息已注入 provider 历史: [{role}] {content[:50]}")
     
     async def process(self, frame: Frame) -> Optional[Frame]:
         """处理转录文本，生成 LLM 响应"""
@@ -471,10 +472,10 @@ class TTSService(BaseService):
             elif config.tts.provider == "openai_tts":
                 self._provider = ServiceFactory.create_tts_provider(
                     "openai_tts",
-                    api_key=config.llm.openai_api_key,
-                    voice=config.tts.openai_tts_voice,
-                    model=config.tts.openai_tts_model,
-                    base_url=config.llm.openai_base_url
+                    api_key=config.tts.get_tts_api_key(config.llm.api_key),
+                    voice=config.tts.tts_voice,
+                    model=config.tts.tts_model_id,
+                    base_url=config.tts.get_tts_base_url(config.llm.base_url)
                 )
             logger.info(f"TTS 服务初始化完成: {config.tts.provider}")
         except Exception as e:
@@ -572,6 +573,11 @@ class PipelineManager:
         self._consumer_task: Optional[asyncio.Task] = None
         self._current_response_task: Optional[asyncio.Task] = None
         self._cancelled = False
+        
+        # 对话历史记录（用于将 conversation.item.create 的文本内容注入 LLM 上下文）
+        self._conversation_history: list[dict] = []
+        # 最后一次文本输入（用于 text-only response.create）
+        self._pending_text_input: Optional[str] = None
     
     def configure(self, 
                   vad_threshold: float = 0.5,
@@ -785,7 +791,22 @@ class PipelineManager:
             logger.info("LLM 指令已更新")
     
     async def force_response(self):
-        """强制生成响应（用于手动 VAD 模式）"""
+        """强制生成响应
+        
+        支持两种模式：
+        1. 纯文本模式：客户端通过 conversation.item.create 发送文本，然后调用 response.create
+           → 直接走 LLM -> TTS，跳过 STT
+        2. 音频模式：手动 VAD 模式下客户端 commit 音频后调用 response.create
+           → 走 STT -> LLM -> TTS
+        """
+        # 优先处理待处理的文本输入
+        if self._pending_text_input:
+            text = self._pending_text_input
+            self._pending_text_input = None
+            await self._process_text_response(text)
+            return
+        
+        # 回退到音频模式
         if self.stt:
             # 触发 STT 处理
             stt_result = await self.stt.process(UserStoppedSpeakingFrame())
@@ -795,6 +816,66 @@ class PipelineManager:
                 
                 if isinstance(llm_result, LLMResponseFrame) and self.tts:
                     await self.tts.process(llm_result)
+    
+    async def _process_text_response(self, text: str):
+        """处理纯文本输入的响应流程（跳过 STT，直接 LLM -> TTS）"""
+        if not self.llm:
+            logger.warning("无法处理文本响应：LLM 未初始化")
+            return
+        
+        # 直接创建 TranscriptionFrame 送入 LLM
+        frame = TranscriptionFrame(text=text)
+        llm_result = await self.llm.process(frame)
+        
+        if self._cancelled:
+            return
+        
+        if isinstance(llm_result, LLMResponseFrame) and self.tts:
+            await self.tts.process(llm_result)
+    
+    def inject_text_message(self, text: str, role: str = "user"):
+        """将文本消息注入 LLM 对话历史上下文
+        
+        当客户端通过 conversation.item.create 发送文本内容时调用此方法，
+        将文本保存到对话历史。仅当 role == "user" 时设置为待处理输入
+        （后续由 LLMService.process 负责推入 provider 历史，避免重复追加）。
+        
+        Args:
+            text: 文本内容
+            role: 角色 (user/assistant/system)
+        """
+        self._conversation_history.append({"role": role, "content": text})
+        
+        # 仅用户消息才标记为待处理输入
+        if role == "user":
+            self._pending_text_input = text
+        else:
+            # assistant/system 消息直接同步到 LLM provider 历史
+            if self.llm:
+                self.llm.inject_context_message(role, text)
+        
+        logger.info(f"文本消息已注入 LLM 上下文: [{role}] {text[:50]}...")
+    
+    async def audio_commit_response(self):
+        """手动提交音频并生成响应
+        
+        用于手动 VAD 模式 (turn_detection=null)，
+        当客户端发送 input_audio_buffer.commit 时调用。
+        """
+        if self.stt:
+            # 触发 STT 处理累积的音频
+            stt_result = await self.stt.process(UserStoppedSpeakingFrame())
+            
+            if isinstance(stt_result, TranscriptionFrame) and stt_result.text:
+                # STT 完成，继续 LLM -> TTS
+                if self.llm:
+                    llm_result = await self.llm.process(stt_result)
+                    
+                    if self._cancelled:
+                        return
+                    
+                    if isinstance(llm_result, LLMResponseFrame) and self.tts:
+                        await self.tts.process(llm_result)
     
     async def cancel_response(self):
         """取消当前响应"""

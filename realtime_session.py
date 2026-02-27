@@ -24,9 +24,10 @@ class SessionState:
     is_active: bool = False
     current_response_id: Optional[str] = None
     current_item_id: Optional[str] = None
+    # 跟踪当前音频提交对应的 item_id，用于在 STT 完成后发送 transcription 事件
+    current_audio_item_id: Optional[str] = None
     # TODO: 在 LLM 响应处理中更新这些计数器，
     # 用于跟踪会话的 token 使用量和计费。
-    # 可以在 LLMService 响应回调中更新，并在 session.created/session.updated 事件中返回。
     total_input_tokens: int = 0
     total_output_tokens: int = 0
 
@@ -76,6 +77,12 @@ class RealtimeSession:
         # 响应取消回调：取消当前响应
         self.transport.on_response_cancel(self._on_response_cancel)
         
+        # 音频提交回调：手动 VAD 模式下客户端提交音频
+        self.transport.on_audio_commit(self._on_audio_commit)
+        
+        # 文本消息回调：将文本内容注入 LLM 上下文
+        self.transport.on_text_message(self._on_text_message)
+        
         # === Pipeline -> Transport 回调 ===
         
         # 用户开始说话：发送打断信号
@@ -106,19 +113,12 @@ class RealtimeSession:
         self.state.is_active = True
         
         # 配置管道
-        # 优先使用请求中指定的模型，否则根据配置的 LLM 提供商选择模型
+        # 优先使用请求中指定的模型，否则使用统一配置的 LLM_MODEL_ID
         if self.model:
-            # 使用请求中指定的模型名称
             llm_model = self.model
             logger.info(f"使用请求指定的模型: {llm_model}")
-        elif config.llm.provider == "openai":
-            llm_model = config.llm.openai_model
-        elif config.llm.provider == "ollama":
-            llm_model = config.llm.ollama_model
-        elif config.llm.provider == "siliconflow":
-            llm_model = config.llm.siliconflow_model
         else:
-            llm_model = "gpt-4o"  # 默认值
+            llm_model = config.llm.model_id or "gpt-4o"
         
         self.pipeline.configure(
             vad_threshold=config.vad.threshold,
@@ -184,13 +184,30 @@ class RealtimeSession:
     
     async def _on_response_create(self):
         """处理响应创建请求"""
-        # 强制触发响应生成
+        # 强制触发响应生成（支持文本和音频两种模式）
         await self.pipeline.force_response()
     
     async def _on_response_cancel(self):
         """处理响应取消"""
         await self.pipeline.cancel_response()
         await self.transport.cancel_response()
+    
+    async def _on_audio_commit(self):
+        """处理音频提交（手动 VAD 模式）
+        
+        当客户端发送 input_audio_buffer.commit 时：
+        触发 STT -> LLM -> TTS 完整流程
+        """
+        await self.pipeline.audio_commit_response()
+    
+    async def _on_text_message(self, text: str):
+        """处理文本消息输入
+        
+        当客户端通过 conversation.item.create 发送文本内容时：
+        将文本注入 LLM 上下文，等待 response.create 触发生成
+        """
+        self.pipeline.inject_text_message(text, role="user")
+        logger.info(f"文本消息已接收: {text[:50]}...")
     
     # ==================== Pipeline -> Transport 回调实现 ====================
     
@@ -209,13 +226,44 @@ class RealtimeSession:
         logger.info("🎤 用户开始说话")
     
     async def _on_user_speech_end(self):
-        """用户停止说话"""
+        """用户停止说话
+        
+        OpenAI Realtime API 的完整事件序列：
+        1. input_audio_buffer.speech_stopped
+        2. input_audio_buffer.committed
+        3. conversation.item.input_audio_transcription.completed (待 STT 完成后)
+        """
         await self.transport.send_speech_stopped()
+        
+        # 发送音频提交事件（Server VAD 模式下自动提交）
+        item_id = await self.transport.send_audio_committed()
+        self.state.current_audio_item_id = item_id
+        
         logger.info("🔇 用户停止说话")
     
     async def _on_transcription(self, text: str):
-        """转录完成"""
+        """转录完成
+        
+        STT 完成后，发送 conversation.item.input_audio_transcription.completed 事件
+        通知客户端输入音频的转录结果。
+        """
         logger.info(f"转录结果: {text}")
+        
+        # 捕获并清空 item_id，避免残留 stale id
+        item_id = self.state.current_audio_item_id
+        self.state.current_audio_item_id = None
+
+        if item_id:
+            if text:
+                await self.transport.send_transcription_completed(
+                    item_id=item_id,
+                    transcript=text
+                )
+            else:
+                await self.transport.send_transcription_failed(
+                    item_id=item_id,
+                    error_message="No speech detected or transcription empty"
+                )
     
     async def _on_response_start(self):
         """响应开始 - 创建响应对象"""

@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>设置 - Realtime Voice Chat</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:             #0f172a;
+      --bg-secondary:   #1e293b;
+      --bg-tertiary:    #334155;
+      --surface:        #1e293b;
+      --accent:         #6366f1;
+      --accent-hover:   #818cf8;
+      --accent-glow:    rgba(99, 102, 241, 0.3);
+      --success:        #22c55e;
+      --warning:        #f59e0b;
+      --danger:         #ef4444;
+      --text:           #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-tertiary:  #64748b;
+      --border:         rgba(148, 163, 184, 0.12);
+      --border-focus:   rgba(99, 102, 241, 0.5);
+      --radius:         12px;
+      --radius-sm:      8px;
+      --shadow:         0 4px 24px rgba(0,0,0,0.25);
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+      line-height: 1.6;
+    }
+
+    /* ============================== Header ============================== */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .back-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      transition: color 0.2s;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+    }
+    .back-link:hover { color: var(--accent); background: rgba(255,255,255,0.04); }
+    .back-link svg { width: 18px; height: 18px; }
+
+    .brand {
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ============================== Main ============================== */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 20px 40px;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .page-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    /* ============================== Tabs ============================== */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      background: var(--bg-secondary);
+      padding: 4px;
+      border-radius: var(--radius);
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .tab.active { background: var(--accent); color: #fff; }
+
+    /* ============================== Config Group ============================== */
+    .config-group {
+      display: none;
+    }
+    .config-group.active {
+      display: block;
+    }
+
+    .group-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ============================== Form Fields ============================== */
+    .field {
+      margin-bottom: 16px;
+      transition: opacity 0.25s, max-height 0.25s;
+    }
+    .field.hidden {
+      display: none;
+    }
+
+    .field-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .field-key {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
+      background: rgba(255,255,255,0.04);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    .field-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .field-input:focus { border-color: var(--border-focus); }
+    .field-input::placeholder { color: var(--text-tertiary); }
+
+    select.field-input {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+      cursor: pointer;
+    }
+
+    textarea.field-input {
+      height: 80px;
+      padding: 10px 12px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .field-input.password-wrap {
+      display: flex;
+      align-items: center;
+      padding: 0;
+      height: auto;
+      border: none;
+      background: transparent;
+    }
+
+    .password-group {
+      position: relative;
+      width: 100%;
+    }
+
+    .password-group input {
+      width: 100%;
+      height: 40px;
+      padding: 0 40px 0 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .password-group input:focus { border-color: var(--border-focus); }
+
+    .password-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+    }
+    .password-toggle:hover { color: var(--text-secondary); }
+    .password-toggle svg { width: 16px; height: 16px; }
+
+    /* ============================== Action Bar ============================== */
+    .action-bar {
+      position: sticky;
+      bottom: 0;
+      padding: 16px 0;
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+
+    .action-bar .hint {
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: var(--bg-tertiary); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+    /* ============================== Toast ============================== */
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      z-index: 100;
+      animation: fadeUp 0.3s ease-out;
+      pointer-events: none;
+    }
+    .toast.success { background: var(--success); color: #fff; }
+    .toast.error   { background: var(--danger); color: #fff; }
+    .toast.warning { background: var(--warning); color: #000; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translate(-50%, -8px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+    /* ============================== Loading Skeleton ============================== */
+    .skeleton {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .skeleton-row {
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ============================== Responsive ============================== */
+    @media (max-width: 600px) {
+      header { padding: 10px 14px; }
+      main { padding: 16px 14px 32px; }
+      .tabs { gap: 2px; }
+      .tab  { padding: 7px 12px; font-size: 12px; }
+      .action-bar { flex-direction: column; align-items: stretch; }
+      .btn-group { justify-content: flex-end; }
+    }
+
+    /* ============================== Scrollbar ============================== */
+    main::-webkit-scrollbar { width: 6px; }
+    main::-webkit-scrollbar-track { background: transparent; }
+    main::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+    main::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+  </style>
+</head>
+<body>
+
+  <!-- ============================== Header ============================== -->
+  <header>
+    <div class="header-left">
+      <a href="/" class="back-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        返回对话
+      </a>
+    </div>
+    <div class="brand">⚙️ 服务配置</div>
+  </header>
+
+  <!-- ============================== Main ============================== -->
+  <main>
+    <div class="container">
+      <h1 class="page-title">服务配置</h1>
+      <p class="page-desc">编辑 .env 配置文件。修改保存后需要重启服务器才能生效。</p>
+
+      <!-- Tabs -->
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-group="server">🖥️ 服务器</button>
+        <button class="tab" data-group="stt">🎤 STT 语音识别</button>
+        <button class="tab" data-group="llm">🧠 LLM 语言模型</button>
+        <button class="tab" data-group="tts">🔊 TTS 语音合成</button>
+        <button class="tab" data-group="vad">📊 VAD 语音检测</button>
+      </div>
+
+      <!-- Config Groups (rendered by JS) -->
+      <div id="config-groups">
+        <div class="skeleton" id="loading">
+          <div class="skeleton-row" style="width:30%"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row" style="width:60%"></div>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-bar">
+        <span class="hint" id="status-hint">加载中...</span>
+        <div class="btn-group">
+          <button class="btn" id="btn-reset" disabled>重置</button>
+          <button class="btn btn-primary" id="btn-save" disabled>💾 保存配置</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================== JS ============================== -->
+  <script>
+  'use strict';
+
+  class SettingsApp {
+    constructor() {
+      this.schema = [];
+      this.originalValues = {};   // 从服务器读取的原始值（密码脱敏）
+      this.rawValues = {};        // 完整值（密码不脱敏）
+      this.currentValues = {};    // 当前表单值
+      this.dirty = false;
+
+      this.$ = {
+        tabs:         document.getElementById('tabs'),
+        configGroups: document.getElementById('config-groups'),
+        loading:      document.getElementById('loading'),
+        btnSave:      document.getElementById('btn-save'),
+        btnReset:     document.getElementById('btn-reset'),
+        statusHint:   document.getElementById('status-hint'),
+      };
+
+      this._bindEvents();
+    }
+
+    _bindEvents() {
+      // Tab switching
+      this.$.tabs.addEventListener('click', (e) => {
+        const tab = e.target.closest('.tab');
+        if (!tab) return;
+        this.$.tabs.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const group = tab.dataset.group;
+        document.querySelectorAll('.config-group').forEach(g => {
+          g.classList.toggle('active', g.dataset.group === group);
+        });
+      });
+
+      this.$.btnSave.addEventListener('click', () => this.save());
+      this.$.btnReset.addEventListener('click', () => this.reset());
+    }
+
+    async init() {
+      try {
+        // Fetch schema + current values in parallel
+        const [schemaRes, valuesRes, rawRes] = await Promise.all([
+          fetch('/api/config/schema'),
+          fetch('/api/config'),
+          fetch('/api/config/raw'),
+        ]);
+
+        const schemaData = await schemaRes.json();
+        const valuesData = await valuesRes.json();
+        const rawData    = await rawRes.json();
+
+        this.schema = schemaData.schema || [];
+        this.originalValues = valuesData.values || {};
+        this.rawValues = rawData.values || {};
+
+        // Merge: use raw values as the working copy
+        this.currentValues = { ...this.rawValues };
+
+        this._render();
+
+        this.$.statusHint.textContent = valuesData.env_exists
+          ? '.env 文件已加载'
+          : '.env 文件不存在，将使用默认值';
+
+        this.$.btnSave.disabled = false;
+        this.$.btnReset.disabled = false;
+
+      } catch (err) {
+        console.error('Failed to load config:', err);
+        const errP = document.createElement('p');
+        errP.style.color = 'var(--danger)';
+        errP.textContent = '加载配置失败: ' + err.message;
+        this.$.loading.innerHTML = '';
+        this.$.loading.appendChild(errP);
+      }
+    }
+
+    _render() {
+      this.$.loading.remove();
+
+      // Group the schema items
+      const groups = {};
+      const groupLabels = {
+        server: '🖥️ 服务器配置',
+        stt: '🎤 STT 语音识别',
+        llm: '🧠 LLM 语言模型',
+        tts: '🔊 TTS 语音合成',
+        vad: '📊 VAD 语音检测',
+      };
+
+      for (const item of this.schema) {
+        const g = item.group || 'other';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(item);
+      }
+
+      for (const [groupKey, items] of Object.entries(groups)) {
+        const section = document.createElement('div');
+        section.className = 'config-group' + (groupKey === 'server' ? ' active' : '');
+        section.dataset.group = groupKey;
+
+        const title = document.createElement('h2');
+        title.className = 'group-title';
+        title.textContent = groupLabels[groupKey] || groupKey;
+        section.appendChild(title);
+
+        for (const item of items) {
+          section.appendChild(this._createField(item));
+        }
+
+        this.$.configGroups.appendChild(section);
+      }
+
+      this._updateVisibility();
+    }
+
+    _createField(item) {
+      const field = document.createElement('div');
+      field.className = 'field';
+      field.dataset.key = item.key;
+      if (item.show_when) field.dataset.showWhen = JSON.stringify(item.show_when);
+
+      // Label
+      const label = document.createElement('div');
+      label.className = 'field-label';
+      label.textContent = item.label + ' ';
+      const keySpan = document.createElement('span');
+      keySpan.className = 'field-key';
+      keySpan.textContent = item.key;
+      label.appendChild(keySpan);
+      field.appendChild(label);
+
+      const currentVal = this.currentValues[item.key] ?? item.default ?? '';
+
+      let input;
+
+      if (item.type === 'select') {
+        input = document.createElement('select');
+        input.className = 'field-input';
+        for (const opt of (item.options || [])) {
+          const option = document.createElement('option');
+          option.value = opt;
+          option.textContent = opt;
+          if (opt === currentVal) option.selected = true;
+          input.appendChild(option);
+        }
+      } else if (item.type === 'textarea') {
+        input = document.createElement('textarea');
+        input.className = 'field-input';
+        input.value = currentVal;
+        if (item.placeholder) input.placeholder = item.placeholder;
+      } else if (item.type === 'password') {
+        const group = document.createElement('div');
+        group.className = 'password-group';
+        input = document.createElement('input');
+        input.type = 'password';
+        input.value = currentVal;
+        input.autocomplete = 'off';
+        if (item.placeholder) input.placeholder = item.placeholder;
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'password-toggle';
+        toggleBtn.type = 'button';
+        toggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+        toggleBtn.addEventListener('click', () => {
+          const isPassword = input.type === 'password';
+          input.type = isPassword ? 'text' : 'password';
+          toggleBtn.innerHTML = isPassword
+            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+        });
+
+        group.appendChild(input);
+        group.appendChild(toggleBtn);
+        field.appendChild(label);
+        field.appendChild(group);
+
+        input.addEventListener('input', () => this._onFieldChange(item.key, input.value));
+        return field;
+      } else {
+        input = document.createElement('input');
+        input.className = 'field-input';
+        input.type = 'text';
+        input.value = currentVal;
+        if (item.placeholder) input.placeholder = item.placeholder;
+      }
+
+      if (item.type !== 'password') {
+        input.addEventListener('input', () => this._onFieldChange(item.key, input.value));
+        input.addEventListener('change', () => this._onFieldChange(item.key, input.value));
+        field.appendChild(input);
+      }
+
+      return field;
+    }
+
+    _onFieldChange(key, value) {
+      this.currentValues[key] = value;
+      this.dirty = true;
+      this.$.statusHint.textContent = '有未保存的更改';
+      this.$.statusHint.style.color = 'var(--warning)';
+
+      // Some provider selects control visibility of other fields
+      const providerKeys = ['STT_PROVIDER', 'TTS_PROVIDER'];
+      if (providerKeys.includes(key)) {
+        this._updateVisibility();
+      }
+    }
+
+    _updateVisibility() {
+      document.querySelectorAll('.field[data-show-when]').forEach(field => {
+        const cond = JSON.parse(field.dataset.showWhen);
+        let visible = true;
+        for (const [condKey, condVal] of Object.entries(cond)) {
+          const current = this.currentValues[condKey] || '';
+          if (Array.isArray(condVal)) {
+            if (!condVal.includes(current)) visible = false;
+          } else {
+            if (current !== condVal) visible = false;
+          }
+        }
+        field.classList.toggle('hidden', !visible);
+      });
+    }
+
+    async save() {
+      this.$.btnSave.disabled = true;
+      this.$.statusHint.textContent = '保存中...';
+      this.$.statusHint.style.color = 'var(--text-secondary)';
+
+      try {
+        // Only send fields that have changed
+        const changed = {};
+        for (const item of this.schema) {
+          const key = item.key;
+          const cur = this.currentValues[key] ?? '';
+          const orig = this.rawValues[key] ?? '';
+          if (cur !== orig) {
+            changed[key] = cur;
+          }
+        }
+
+        if (Object.keys(changed).length === 0) {
+          this._toast('没有需要保存的更改', 'warning');
+          this.$.btnSave.disabled = false;
+          this.$.statusHint.textContent = '无更改';
+          this.$.statusHint.style.color = 'var(--text-tertiary)';
+          return;
+        }
+
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: changed }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.detail || 'Save failed');
+        }
+
+        // Update raw values
+        Object.assign(this.rawValues, changed);
+        this.dirty = false;
+        this.$.statusHint.textContent = data.message || '配置已保存';
+        this.$.statusHint.style.color = 'var(--success)';
+        this._toast('配置已保存，重启服务器生效', 'success');
+
+      } catch (err) {
+        console.error('Save failed:', err);
+        this._toast('保存失败: ' + err.message, 'error');
+        this.$.statusHint.textContent = '保存失败';
+        this.$.statusHint.style.color = 'var(--danger)';
+      } finally {
+        this.$.btnSave.disabled = false;
+      }
+    }
+
+    reset() {
+      // Reset all fields to raw (saved) values
+      for (const item of this.schema) {
+        const key = item.key;
+        this.currentValues[key] = this.rawValues[key] ?? item.default ?? '';
+        const field = document.querySelector(`.field[data-key="${key}"]`);
+        if (!field) continue;
+        const input = field.querySelector('input, select, textarea');
+        if (input) input.value = this.currentValues[key];
+      }
+      this.dirty = false;
+      this.$.statusHint.textContent = '已重置为保存的值';
+      this.$.statusHint.style.color = 'var(--text-tertiary)';
+      this._updateVisibility();
+    }
+
+    _toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + type;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+  }
+
+  // Bootstrap
+  document.addEventListener('DOMContentLoaded', () => {
+    const app = new SettingsApp();
+    app.init().catch(console.error);
+  });
+  </script>
+</body>
+</html>

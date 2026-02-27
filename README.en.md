@@ -7,16 +7,18 @@ A local WebSocket server that mirrors the OpenAI Realtime API protocol, so you c
 ## ✨ Features
 
 - 🔄 **Protocol-compatible**: Mirrors OpenAI Realtime API style (URL, JSON events, audio encoding)
-- 🔌 **Pluggable backends**: Uses an internal pipeline to connect STT/LLM/TTS providers (Deepgram, Ollama/Llama, ElevenLabs, SiliconFlow, etc.)
+- 🔌 **Unified OpenAI-compatible format**: LLM config uses unified OpenAI-compatible interface — just 4 fields to connect any provider
 - 🚀 **Minimal client changes**: Usually only change `baseUrl` to point to this server
-- 🎤 **Built-in Server VAD**: Integrates VAD (Silero when available) for hands-free “open mic” mode
-- 🎙️ **Terminal client included**: A full TUI client for voice interaction
+- 🎤 **Built-in Server VAD**: Integrates VAD (Silero when available) for hands-free "open mic" mode
+- 💻 **Browser WebUI**: Built-in voice/text dual-mode interactive input with animated transitions
+- 📝 **Markdown live rendering**: AI responses render Markdown in real-time with syntax highlighting, copy buttons, raw/rendered toggle
+- ⚙️ **Browser config management**: Built-in Settings page to edit .env configuration from the browser
 - 🌟 **SiliconFlow supported**: Faster & cheaper in mainland China; see [SILICONFLOW.md](SILICONFLOW.md)
 
 ## 📁 Project Structure
 
 ```
-├── main.py                 # FastAPI server entry
+├── main.py                 # FastAPI server entry (serves WebUI static files)
 ├── config.py               # Config management (.env supported)
 ├── logger_config.py        # Logging configuration module
 ├── service_providers.py    # STT/LLM/TTS provider implementations
@@ -24,31 +26,54 @@ A local WebSocket server that mirrors the OpenAI Realtime API protocol, so you c
 ├── transport.py            # WebSocket Transport layer (protocol translator)
 ├── pipeline_manager.py     # Pipeline manager
 ├── realtime_session.py     # Session lifecycle manager
-├── audio_utils.py          # Audio utilities (resampling/playback, etc.)
-├── push_to_talk_app.py     # Terminal client (open-mic mode)
+├── audio_utils.py          # Audio utilities (resampling, etc.)
+├── static/                 # Browser WebUI static files
+│   ├── index.html          # WebUI main page (voice chat + Markdown rendering)
+│   ├── settings.html       # Config management page (online .env editor)
+│   └── audio-worklet.js    # Web Audio processors
+├── push_to_talk_app.py     # WebUI launcher (starts server + opens browser)
 ├── test_client.py          # Simple test client
-└── requirements.txt        # Python dependencies
+├── tests/
+│   └── test_config.py      # Config module unit tests (29 cases)
+├── pyproject.toml          # Project config & dependency definitions
+├── requirements.txt        # pip dependency list (fallback)
+└── .python-version         # Python version constraint (3.10)
 ```
 
 ## 🚀 Quick Start
 
 ### 1) Install dependencies
 
+> This project uses [uv](https://docs.astral.sh/uv/) to manage dependencies and virtual environments.
+>
+> Install uv:
+> - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+> - Linux/Mac: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 ```bash
-# Option 1: create a venv (recommended)
+# Create venv and install all dependencies in one step
+uv sync
+
+# Include local Whisper STT
+uv sync --extra whisper
+```
+
+<details>
+<summary>📌 Without uv (pip fallback)</summary>
+
+```bash
 python -m venv .venv
 
 # Activate venv
 # Windows PowerShell:
 .\.venv\Scripts\Activate.ps1
-# Windows CMD:
-.venv\Scripts\activate.bat
 # Linux/Mac:
 source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
+</details>
 
 ### 2) Configure services (important)
 
@@ -61,13 +86,17 @@ cp .env.example .env
 Recommended for users in mainland China (example):
 
 ```bash
-LLM_PROVIDER=siliconflow
-SILICONFLOW_API_KEY=your_api_key
-SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
+# LLM config (unified OpenAI-compatible format, just 4 fields)
+LLM_MODEL_NAME=SiliconFlow
+LLM_BASE_URL=https://api.siliconflow.cn/v1
+LLM_MODEL_ID=deepseek-ai/DeepSeek-V3
+LLM_API_KEY=your_api_key
 
 TTS_PROVIDER=edge_tts
 EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
 ```
+
+> 💡 You can also edit config in your browser at `http://localhost:8000/settings` after starting the server.
 
 More docs:
 - [QUICKSTART.md](QUICKSTART.md) (Chinese) – practical recipes
@@ -77,32 +106,43 @@ More docs:
 ### 3) Start the server
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # or
-python main.py
+uv run python main.py
 ```
 
 ### 4) Run a client
 
-#### Option A: Terminal UI client (recommended)
+#### Option A: Browser WebUI (recommended)
+
+The server includes a built-in WebUI. After starting the server, open your browser:
 
 ```bash
-pip install textual sounddevice
-python push_to_talk_app.py
+# Open in browser
+http://localhost:8000
+
+# Or use the launcher (starts server + opens browser automatically)
+uv run python push_to_talk_app.py
 ```
 
 Notes:
-- Speak directly to the microphone; Server VAD detects speech automatically
-- Press **Q** to quit
-- Default URL: `ws://localhost:8000/v1/realtime`
-- You can set `USE_LOCAL_SERVER = False` inside the client to use OpenAI instead
+- Click the microphone button to start/stop voice capture
+- Interactive input bar: voice/text zones start at 50/50, expand to 75/25 on activation with smooth animation
+- Server VAD detects speech automatically
+- You can also type text messages
+- AI responses render Markdown in real-time (headings, lists, code blocks with syntax highlighting, tables, images, etc.)
+- Toggle between rendered/raw Markdown per message or globally
+- Code blocks include one-click copy buttons
+- Built-in settings page at `/settings` to configure .env from browser
+- Auto-reconnects on disconnect
+- Supports speech interruption (speaking stops AI audio playback)
 
 #### Option B: Simple test client
 
 ```bash
-python test_client.py
-python test_client.py -i
+uv run python test_client.py
+uv run python test_client.py -i
 ```
 
 #### Option C: Use OpenAI SDK (pointing to this server)
@@ -143,7 +183,6 @@ Client ← OpenAI-style JSON ← Transport (translate) ← (VAD → STT → LLM 
 4. **Audio Utilities** ([audio_utils.py](audio_utils.py))
    - Audio resampling (24kHz ↔ 16kHz)
    - Audio buffer management
-   - Async audio player for client
 
 ## 📊 Supported Services
 
@@ -155,11 +194,16 @@ Client ← OpenAI-style JSON ← Transport (translate) ← (VAD → STT → LLM 
 | Local Whisper | `local_whisper` | Completely free, needs model download | Not required |
 
 ### LLM (Language Model)
-| Provider | Config Value | Notes | API Key |
-|----------|--------------|-------|---------|
-| **SiliconFlow** 🌟 | `siliconflow` | Fast in China, ~1/10 OpenAI price | Required |
-| OpenAI | `openai` | GPT-4o and other models | Required |
-| Ollama | `ollama` | Local, completely free | Not required |
+
+> LLM uses a unified OpenAI-compatible format. Any provider supporting the OpenAI API format can be used.
+
+| Provider | LLM_BASE_URL | Notes | API Key |
+|----------|-------------|-------|---------|
+| **SiliconFlow** 🌟 | `https://api.siliconflow.cn/v1` | Fast in China, ~1/10 OpenAI price | Required |
+| OpenAI | `https://api.openai.com/v1` | GPT-4o and other models | Required |
+| DeepSeek | `https://api.deepseek.com/v1` | DeepSeek official API | Required |
+| Ollama | `http://localhost:11434/v1` | Local, completely free | Not required |
+| DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` | Alibaba Cloud Qwen | Required |
 
 ### TTS (Text-to-Speech)
 | Provider | Config Value | Notes | API Key |
@@ -174,6 +218,21 @@ Client ← OpenAI-style JSON ← Transport (translate) ← (VAD → STT → LLM 
 
 All configuration is done via `.env` file. See [.env.example](.env.example) for the complete template.
 
+The `.env` file is auto-created from `.env.example` on first startup if it doesn't exist.
+
+> 💡 You can also edit all settings in the browser at `http://localhost:8000/settings`.
+
+### LLM Configuration (Unified OpenAI-compatible format)
+
+All LLMs are called through the OpenAI-compatible interface. Just fill in 4 fields:
+
+```bash
+LLM_MODEL_NAME=SiliconFlow        # Provider name (for display/logging only)
+LLM_BASE_URL=https://api.siliconflow.cn/v1  # API endpoint
+LLM_MODEL_ID=deepseek-ai/DeepSeek-V3        # Model ID  
+LLM_API_KEY=your_api_key_here               # API key
+```
+
 ### VAD Configuration (Open-mic mode)
 ```bash
 VAD_THRESHOLD=0.5          # Sensitivity (0.0-1.0), higher = less sensitive
@@ -183,4 +242,4 @@ VAD_PREFIX_PADDING_MS=300    # Speech prefix padding (ms)
 
 ## 📄 License
 
-See [LICENSE](LICENSE).
+MIT License — see [LICENSE](LICENSE).

@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Realtime Voice Chat</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>">
+  <!-- Markdown / Code-highlight -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js" integrity="sha384-NNQgBjjuhtXzPmmy4gurS5X7P4uTt1DThyevz4Ua0IVK5+kazYQI1W27JHjbbxQz" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js" integrity="sha384-vdScihEZCfbPnBQf+lc7LgXUdJVYyhC3yWHUW5C5P5GpHRqVnaM6HJELJxT6IqwM" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous"></script>
+  <style>
+    /* ============================== Reset & Variables ============================== */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:             #0f172a;
+      --bg-secondary:   #1e293b;
+      --bg-tertiary:    #334155;
+      --surface:        #1e293b;
+      --card:           #1e293b;
+      --accent:         #6366f1;
+      --accent-hover:   #818cf8;
+      --accent-glow:    rgba(99, 102, 241, 0.3);
+      --success:        #22c55e;
+      --warning:        #f59e0b;
+      --danger:         #ef4444;
+      --text:           #f1f5f9;
+      --text-secondary: #94a3b8;
+      --border:         rgba(148, 163, 184, 0.12);
+      --radius:         12px;
+      --radius-sm:      8px;
+      --shadow:         0 4px 24px rgba(0,0,0,0.25);
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+      line-height: 1.6;
+      overflow: hidden;
+    }
+
+    /* ============================== Header ============================== */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(255,255,255,0.06);
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+      transition: background 0.3s;
+    }
+
+    .status-dot.connected    { background: var(--success); }
+    .status-dot.connecting   { background: var(--warning); animation: blink 1s infinite; }
+    .status-dot.disconnected { background: var(--danger); }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.3; }
+    }
+
+    /* ============================== Chat Area ============================== */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      scroll-behavior: smooth;
+    }
+
+    #messages {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 800px;
+      width: 100%;
+      margin: 0 auto;
+      flex: 1;
+    }
+
+    /* Welcome */
+    .welcome {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+    .welcome h2 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .welcome p {
+      font-size: 14px;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    /* Message Bubble */
+    .msg {
+      display: flex;
+      gap: 10px;
+      animation: fadeUp 0.25s ease-out;
+      max-width: 85%;
+    }
+    .msg.user    { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.assistant { align-self: flex-start; }
+    .msg.system  { align-self: center; max-width: 100%; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+      background: var(--bg-tertiary);
+    }
+    .msg.user .msg-avatar     { background: var(--accent); color: #fff; font-size: 14px; }
+    .msg.assistant .msg-avatar { background: var(--bg-tertiary); }
+
+    .msg-body {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .msg-role {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+    }
+
+    .msg-text {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      line-height: 1.6;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .msg.user .msg-text {
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.assistant .msg-text {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.system .msg-text {
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      text-align: center;
+      padding: 4px 12px;
+    }
+
+    .msg-text .cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1em;
+      background: var(--text-secondary);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: cursorBlink 0.8s step-end infinite;
+    }
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0; }
+    }
+
+    /* ============================== Footer ============================== */
+    footer {
+      flex-shrink: 0;
+      padding: 12px 20px 16px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+
+    /* VAD status bar */
+    .vad-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 4px 0 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      transition: color 0.3s;
+    }
+    .vad-bar .vad-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--bg-tertiary);
+      transition: background 0.3s;
+    }
+    .vad-bar.speaking .vad-dot { background: var(--success); }
+    .vad-bar.speaking          { color: var(--success); }
+
+    /* Input toolbar */
+    .toolbar {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+      height: 52px;
+    }
+
+    /* ── Voice zone (mic button area) ── */
+    .voice-zone {
+      flex: 1 1 50%;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 26px;
+      border: 2px solid var(--border);
+      background: var(--bg);
+      cursor: pointer;
+      transition: flex 0.4s cubic-bezier(.4,0,.2,1), border-color 0.25s, background 0.25s;
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+    }
+    .voice-zone:hover { border-color: var(--accent); }
+    .voice-zone .voice-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-left: 8px;
+      white-space: nowrap;
+      opacity: 0;
+      max-width: 0;
+      overflow: hidden;
+      transition: opacity 0.3s 0.1s, max-width 0.4s cubic-bezier(.4,0,.2,1), margin 0.3s;
+    }
+    .voice-zone.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+    .voice-zone.active .voice-label { color: rgba(255,255,255,0.85); }
+    .voice-zone.active:hover { background: var(--accent-hover); }
+
+    /* Expanded states */
+    .toolbar.focus-voice .voice-zone { flex: 3 1 75%; }
+    .toolbar.focus-voice .text-zone  { flex: 1 1 25%; }
+    .toolbar.focus-text  .voice-zone { flex: 1 1 25%; }
+    .toolbar.focus-text  .text-zone  { flex: 3 1 75%; }
+
+    .toolbar.focus-voice .voice-zone .voice-label {
+      opacity: 1;
+      max-width: 120px;
+    }
+
+    /* Pulse animation when recording */
+    .voice-zone.active {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+      70%  { box-shadow: 0 0 0 14px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+
+    .voice-zone svg { width: 22px; height: 22px; flex-shrink: 0; }
+
+    /* ── Text zone (input + send) ── */
+    .text-zone {
+      flex: 1 1 50%;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 26px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      padding: 0 6px 0 16px;
+      transition: flex 0.4s cubic-bezier(.4,0,.2,1), border-color 0.25s;
+      overflow: hidden;
+    }
+    .text-zone:focus-within { border-color: var(--accent); }
+
+    .text-zone input {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+    .text-zone input::placeholder { color: var(--text-secondary); }
+
+    /* Send button (inside text zone) */
+    .btn-send {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, opacity 0.2s;
+      flex-shrink: 0;
+    }
+    .btn-send:hover { background: var(--accent-hover); }
+    .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-send svg { width: 18px; height: 18px; }
+
+    /* ============================== Responsive ============================== */
+    @media (max-width: 600px) {
+      header { padding: 10px 14px; }
+      .brand { font-size: 15px; }
+      main   { padding: 12px; }
+      footer { padding: 10px 14px 14px; }
+      .msg   { max-width: 92%; }
+      .toolbar { gap: 6px; height: 46px; }
+      .voice-zone svg { width: 20px; height: 20px; }
+      .text-zone input { font-size: 13px; }
+      .btn-send { width: 34px; height: 34px; }
+      .btn-send svg { width: 16px; height: 16px; }
+    }
+
+    /* ============================== Scrollbar ============================== */
+    main::-webkit-scrollbar { width: 6px; }
+    main::-webkit-scrollbar-track { background: transparent; }
+    main::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+    main::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+    /* ============================== Toast / Error ============================== */
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      z-index: 100;
+      animation: fadeUp 0.3s ease-out;
+      pointer-events: none;
+    }
+    .toast.error   { background: var(--danger); color: #fff; }
+    .toast.warning { background: var(--warning); color: #000; }
+    .toast.info    { background: var(--accent); color: #fff; }
+
+    /* ============================== Markdown rendered content ============================== */
+    .msg-text.md-rendered {
+      white-space: normal;
+    }
+    .msg-text.md-rendered > :first-child { margin-top: 0; }
+    .msg-text.md-rendered > :last-child  { margin-bottom: 0; }
+
+    .msg-text.md-rendered h1,
+    .msg-text.md-rendered h2,
+    .msg-text.md-rendered h3,
+    .msg-text.md-rendered h4,
+    .msg-text.md-rendered h5,
+    .msg-text.md-rendered h6 {
+      margin: 0.8em 0 0.4em;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .msg-text.md-rendered h1 { font-size: 1.35em; }
+    .msg-text.md-rendered h2 { font-size: 1.2em; }
+    .msg-text.md-rendered h3 { font-size: 1.1em; }
+
+    .msg-text.md-rendered p {
+      margin: 0.5em 0;
+    }
+
+    .msg-text.md-rendered ul,
+    .msg-text.md-rendered ol {
+      margin: 0.5em 0;
+      padding-left: 1.6em;
+    }
+    .msg-text.md-rendered li { margin: 0.2em 0; }
+    .msg-text.md-rendered li > ul,
+    .msg-text.md-rendered li > ol { margin: 0.1em 0; }
+
+    /* Inline code */
+    .msg-text.md-rendered code:not(pre code) {
+      background: rgba(255,255,255,0.08);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+    }
+    .msg.user .msg-text.md-rendered code:not(pre code) {
+      background: rgba(255,255,255,0.18);
+    }
+
+    /* Code block */
+    .msg-text.md-rendered pre {
+      margin: 0.6em 0;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      position: relative;
+    }
+    .msg-text.md-rendered pre code {
+      display: block;
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-x: auto;
+      font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+      background: rgba(0,0,0,0.3);
+      border-radius: var(--radius-sm);
+    }
+    .msg.user .msg-text.md-rendered pre code {
+      background: rgba(0,0,0,0.2);
+    }
+
+    /* Copy button on code blocks */
+    .code-block-wrap {
+      position: relative;
+    }
+    .code-block-wrap .code-lang {
+      position: absolute;
+      top: 4px;
+      left: 10px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      opacity: 0.7;
+      pointer-events: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .code-block-wrap .btn-copy {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .code-block-wrap:hover .btn-copy { opacity: 1; }
+    .code-block-wrap .btn-copy:hover { color: var(--text); border-color: var(--accent); }
+
+    /* Table */
+    .msg-text.md-rendered table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6em 0;
+      font-size: 13px;
+    }
+    .msg-text.md-rendered th,
+    .msg-text.md-rendered td {
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .msg-text.md-rendered th {
+      background: rgba(255,255,255,0.04);
+      font-weight: 600;
+    }
+    .msg.user .msg-text.md-rendered th {
+      background: rgba(255,255,255,0.1);
+    }
+    .msg-text.md-rendered tr:nth-child(even) td {
+      background: rgba(255,255,255,0.02);
+    }
+
+    /* Blockquote */
+    .msg-text.md-rendered blockquote {
+      margin: 0.5em 0;
+      padding: 4px 12px;
+      border-left: 3px solid var(--accent);
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.03);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+    .msg-text.md-rendered blockquote p { margin: 0.25em 0; }
+
+    /* Links */
+    .msg-text.md-rendered a {
+      color: var(--accent-hover);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .msg.user .msg-text.md-rendered a { color: rgba(255,255,255,0.9); }
+    .msg-text.md-rendered a:hover { opacity: 0.8; }
+
+    /* Images */
+    .msg-text.md-rendered img {
+      max-width: 100%;
+      border-radius: var(--radius-sm);
+      margin: 0.5em 0;
+    }
+
+    /* Horizontal rule */
+    .msg-text.md-rendered hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0.8em 0;
+    }
+
+    /* Task list */
+    .msg-text.md-rendered .task-list-item {
+      list-style: none;
+      margin-left: -1.2em;
+    }
+    .msg-text.md-rendered .task-list-item input[type="checkbox"] {
+      margin-right: 0.4em;
+      accent-color: var(--accent);
+    }
+
+    /* Raw markdown view */
+    .msg-text.md-raw {
+      white-space: pre-wrap;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* Message action bar */
+    .msg-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 2px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .msg:hover .msg-actions,
+    .msg-actions:focus-within { opacity: 1; }
+
+    .msg-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 8px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .msg-action-btn:hover { color: var(--accent); border-color: var(--border); }
+    .msg-action-btn svg { width: 13px; height: 13px; }
+
+    /* Global Markdown toggle in header */
+    .btn-md-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: var(--text-secondary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .btn-md-toggle:hover { color: var(--accent); background: rgba(255,255,255,0.06); }
+    .btn-md-toggle.active { color: var(--accent); }
+    .btn-md-toggle svg { width: 18px; height: 18px; }
+
+    /* Settings link */
+    .btn-settings {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s, background 0.2s;
+    }
+    .btn-settings:hover { color: var(--accent); background: rgba(255,255,255,0.06); }
+    .btn-settings svg { width: 18px; height: 18px; }
+  </style>
+</head>
+<body>
+
+  <!-- ============================== Header ============================== -->
+  <header>
+    <div class="brand">🎙️ Realtime Voice Chat</div>
+    <div class="header-right">
+      <div class="badge" id="conn-badge">
+        <span class="status-dot disconnected" id="status-dot"></span>
+        <span id="status-text">未连接</span>
+      </div>
+      <div class="badge" id="session-badge" style="display:none">
+        Session: <span id="session-id">-</span>
+      </div>
+      <button class="btn-md-toggle active" id="md-toggle" title="Markdown 渲染开关">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>
+        </svg>
+      </button>
+      <a href="/settings" class="btn-settings" title="服务配置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- ============================== Chat Area ============================== -->
+  <main id="chat">
+    <div id="messages">
+      <div class="welcome" id="welcome">
+        <h2>欢迎使用 Realtime Voice Chat</h2>
+        <p>点击下方麦克风按钮开始语音对话，或在文本框中输入文字消息。服务器将自动检测语音活动 (VAD)。</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================== Footer ============================== -->
+  <footer>
+    <div class="vad-bar" id="vad-bar">
+      <span class="vad-dot"></span>
+      <span id="vad-text">VAD: 空闲</span>
+    </div>
+    <div class="toolbar" id="toolbar">
+      <!-- Voice zone -->
+      <div class="voice-zone" id="mic-btn" title="点击开始/停止语音输入">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="1" width="6" height="12" rx="3" />
+          <path d="M19 10v1a7 7 0 01-14 0v-1" />
+          <line x1="12" y1="19" x2="12" y2="23" />
+          <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+        <span class="voice-label" id="voice-label">语音输入中…</span>
+      </div>
+      <!-- Text zone -->
+      <div class="text-zone" id="text-zone">
+        <input type="text" id="text-input" placeholder="输入文字消息..." autocomplete="off" />
+        <button class="btn-send" id="send-btn" title="发送文字">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============================== JavaScript ============================== -->
+  <script>
+  'use strict';
+
+  // ============================================================
+  // Constants
+  // ============================================================
+  const TARGET_SAMPLE_RATE = 24000;
+
+  // ============================================================
+  // Markdown renderer setup
+  // ============================================================
+  (function initMarked() {
+    if (typeof marked === 'undefined') return;
+
+    // Custom renderer for code blocks with copy button & language tag
+    const renderer = new marked.Renderer();
+    renderer.code = function({ text, lang }) {
+      const language = lang && hljs.getLanguage(lang) ? lang : '';
+      let highlighted;
+      try {
+        highlighted = language
+          ? hljs.highlight(text, { language }).value
+          : hljs.highlightAuto(text).value;
+      } catch {
+        highlighted = escapeHtml(text);
+      }
+      const langLabel = language ? `<span class="code-lang">${escapeHtml(language)}</span>` : '';
+      return `<div class="code-block-wrap">${langLabel}<button class="btn-copy" onclick="copyCode(this)">复制</button><pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre></div>`;
+    };
+
+    // Open links in new tab
+    renderer.link = function({ href, title, text }) {
+      const t = title ? ` title="${escapeHtml(title)}"` : '';
+      return `<a href="${escapeHtml(href)}"${t} target="_blank" rel="noopener noreferrer">${text}</a>`;
+    };
+
+    marked.setOptions({
+      renderer,
+      gfm: true,
+      breaks: true,
+    });
+  })();
+
+  /** Minimal HTML entity escape */
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /** Copy code to clipboard (called from code-block button) */
+  function copyCode(btn) {
+    const code = btn.closest('.code-block-wrap')?.querySelector('code');
+    if (!code) return;
+    navigator.clipboard.writeText(code.textContent).then(() => {
+      btn.textContent = '已复制!';
+      setTimeout(() => btn.textContent = '复制', 1500);
+    });
+  }
+
+  /**
+   * Render markdown text to sanitised HTML.
+   * @param {string} text  Raw markdown
+   * @returns {string}      Safe HTML string
+   */
+  function renderMarkdown(text) {
+    if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+      return escapeHtml(text);
+    }
+    const raw = marked.parse(text);
+    return DOMPurify.sanitize(raw, {
+      ADD_ATTR: ['target', 'rel', 'class'],
+      ALLOW_DATA_ATTR: false,
+      FORBID_TAGS: ['style', 'script', 'iframe'],
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+    });
+  }
+
+  // ============================================================
+  // Utility helpers
+  // ============================================================
+  function arrayBufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  function base64ToArrayBuffer(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  /** PCM16 (Int16) ArrayBuffer → Float32Array */
+  function pcm16ToFloat32(buf) {
+    const i16 = new Int16Array(buf);
+    const f32 = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+    return f32;
+  }
+
+  /** 线性插值重采样 */
+  function resampleLinear(input, fromRate, toRate) {
+    if (fromRate === toRate) return input;
+    const ratio = fromRate / toRate;
+    const len = Math.round(input.length / ratio);
+    const out = new Float32Array(len);
+    for (let i = 0; i < len; i++) {
+      const pos = i * ratio;
+      const idx = Math.floor(pos);
+      const frac = pos - idx;
+      out[i] = idx + 1 < input.length
+        ? input[idx] * (1 - frac) + input[idx + 1] * frac
+        : (input[idx] || 0);
+    }
+    return out;
+  }
+
+  // ============================================================
+  // AudioEngine: microphone capture + audio playback
+  // ============================================================
+  class AudioEngine {
+    constructor() {
+      this.audioCtx = null;
+      this.stream = null;
+      this.sourceNode = null;
+      this.captureNode = null;
+      this.playbackNode = null;
+      this.onAudioChunk = null; // callback(ArrayBuffer pcm16)
+    }
+
+    async init() {
+      // 尝试用 24 kHz 采样率创建 AudioContext；如失败则用默认采样率
+      try {
+        this.audioCtx = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
+      } catch {
+        this.audioCtx = new AudioContext();
+        console.warn(`AudioContext 使用默认采样率: ${this.audioCtx.sampleRate}`);
+      }
+
+      await this.audioCtx.audioWorklet.addModule('/static/audio-worklet.js');
+
+      // 创建播放节点（常驻）
+      this.playbackNode = new AudioWorkletNode(this.audioCtx, 'playback-processor');
+      this.playbackNode.connect(this.audioCtx.destination);
+    }
+
+    /** 开始采集麦克风 */
+    async startCapture() {
+      if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
+
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
+      });
+
+      this.sourceNode = this.audioCtx.createMediaStreamSource(this.stream);
+      this.captureNode = new AudioWorkletNode(this.audioCtx, 'capture-processor');
+
+      this.captureNode.port.onmessage = (e) => {
+        // e.data 是 ArrayBuffer (PCM16)
+        this.onAudioChunk?.(e.data);
+      };
+
+      this.sourceNode.connect(this.captureNode);
+      // 不连接 destination，避免回音
+    }
+
+    /** 停止采集 */
+    stopCapture() {
+      this.captureNode?.disconnect();
+      this.sourceNode?.disconnect();
+      this.stream?.getTracks().forEach(t => t.stop());
+      this.captureNode = null;
+      this.sourceNode = null;
+      this.stream = null;
+    }
+
+    /** 播放 PCM16 音频 (base64 encoded) */
+    playAudioDelta(base64Delta) {
+      if (!this.playbackNode) return;
+      if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+
+      const pcm16Buf = base64ToArrayBuffer(base64Delta);
+      let float32 = pcm16ToFloat32(pcm16Buf);
+
+      // 如果 AudioContext 采样率 ≠ 24000，需要重采样
+      if (this.audioCtx.sampleRate !== TARGET_SAMPLE_RATE) {
+        float32 = resampleLinear(float32, TARGET_SAMPLE_RATE, this.audioCtx.sampleRate);
+      }
+
+      this.playbackNode.port.postMessage(float32.buffer, [float32.buffer]);
+    }
+
+    /** 清除播放队列（用于打断） */
+    clearPlayback() {
+      this.playbackNode?.port.postMessage('clear');
+    }
+  }
+
+  // ============================================================
+  // App
+  // ============================================================
+  class App {
+    constructor() {
+      // State
+      this.audio = new AudioEngine();
+      this.ws = null;
+      this.isListening = false;
+      this.isConnected = false;
+      this.reconnectAttempts = 0;
+      this.reconnectTimer = null;
+      this.currentAiMsgEl = null;
+      this.currentAiText = '';
+
+      // Active input mode: 'idle' | 'voice' | 'text'
+      this.inputMode = 'idle';
+
+      // Markdown rendering enabled by default
+      this.markdownEnabled = true;
+      // Map<HTMLElement, string> storing raw text per message element
+      this.rawTextMap = new WeakMap();
+
+      // DOM
+      this.$ = {
+        toolbar:      document.getElementById('toolbar'),
+        micBtn:       document.getElementById('mic-btn'),
+        textZone:     document.getElementById('text-zone'),
+        voiceLabel:   document.getElementById('voice-label'),
+        sendBtn:      document.getElementById('send-btn'),
+        textInput:    document.getElementById('text-input'),
+        mdToggle:     document.getElementById('md-toggle'),
+        messages:     document.getElementById('messages'),
+        welcome:      document.getElementById('welcome'),
+        statusDot:    document.getElementById('status-dot'),
+        statusText:   document.getElementById('status-text'),
+        sessionBadge: document.getElementById('session-badge'),
+        sessionId:    document.getElementById('session-id'),
+        vadBar:       document.getElementById('vad-bar'),
+        vadText:      document.getElementById('vad-text'),
+        chat:         document.getElementById('chat'),
+      };
+
+      this._bindEvents();
+    }
+
+    _bindEvents() {
+      this.$.micBtn.addEventListener('click', () => this.toggleMic());
+      this.$.sendBtn.addEventListener('click', () => this.sendText());
+      this.$.textInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this.sendText();
+        }
+      });
+
+      // Focus/blur on text input controls toolbar expansion
+      this.$.textInput.addEventListener('focus', () => this._setInputMode('text'));
+      this.$.textInput.addEventListener('blur', () => {
+        // Delay to allow send button click to register
+        setTimeout(() => {
+          if (!this.isListening && document.activeElement !== this.$.textInput) {
+            this._setInputMode('idle');
+          }
+        }, 150);
+      });
+
+      // Global Markdown toggle
+      this.$.mdToggle.addEventListener('click', () => this._toggleGlobalMarkdown());
+    }
+
+    /**
+     * Set the active input mode and update toolbar flex layout.
+     * @param {'idle'|'voice'|'text'} mode
+     */
+    _setInputMode(mode) {
+      this.inputMode = mode;
+      this.$.toolbar.classList.remove('focus-voice', 'focus-text');
+      if (mode === 'voice') {
+        this.$.toolbar.classList.add('focus-voice');
+      } else if (mode === 'text') {
+        this.$.toolbar.classList.add('focus-text');
+      }
+    }
+
+    async init() {
+      try {
+        await this.audio.init();
+      } catch (err) {
+        console.error('AudioEngine init failed:', err);
+        this._toast('音频引擎初始化失败：' + err.message, 'error');
+      }
+
+      this.audio.onAudioChunk = (buf) => this._sendAudioChunk(buf);
+      this._connectWS();
+    }
+
+    // ======================== WebSocket ========================
+    _wsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${location.host}/v1/realtime`;
+    }
+
+    _connectWS() {
+      this._setConnectionStatus('connecting');
+
+      try {
+        this.ws = new WebSocket(this._wsUrl());
+      } catch (err) {
+        console.error('WebSocket creation error:', err);
+        this._setConnectionStatus('disconnected');
+        this._scheduleReconnect();
+        return;
+      }
+
+      this.ws.onopen = () => {
+        this.isConnected = true;
+        this.reconnectAttempts = 0;
+        this._setConnectionStatus('connected');
+
+        // 发送 session.update
+        this._sendWS({
+          type: 'session.update',
+          session: {
+            turn_detection: { type: 'server_vad' },
+            modalities: ['audio', 'text'],
+          }
+        });
+      };
+
+      this.ws.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data);
+          this._handleEvent(event);
+        } catch (err) {
+          console.warn('WebSocket JSON parse error:', err, 'raw:', e.data?.slice?.(0, 200));
+        }
+      };
+
+      this.ws.onclose = () => {
+        this.isConnected = false;
+        this._setConnectionStatus('disconnected');
+        this._scheduleReconnect();
+      };
+
+      this.ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+      };
+    }
+
+    _scheduleReconnect() {
+      if (this.reconnectTimer) return;
+      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+      this.reconnectAttempts++;
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        this._connectWS();
+      }, delay);
+    }
+
+    _sendWS(data) {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify(data));
+      }
+    }
+
+    // ======================== Event handling ========================
+    _handleEvent(event) {
+      const t = event.type;
+
+      if (t === 'session.created') {
+        const sid = event.session?.id || 'unknown';
+        this.$.sessionId.textContent = sid;
+        this.$.sessionBadge.style.display = '';
+        this._addSystemMsg('会话已建立');
+        return;
+      }
+
+      if (t === 'session.updated') return;
+
+      if (t === 'input_audio_buffer.speech_started') {
+        this._setVAD(true);
+        // 打断 AI 播放
+        this.audio.clearPlayback();
+        // 如果有正在进行的 AI 消息，结束它
+        this._finalizeAiMsg();
+        return;
+      }
+
+      if (t === 'input_audio_buffer.speech_stopped') {
+        this._setVAD(false);
+        return;
+      }
+
+      if (t === 'input_audio_buffer.committed') return;
+
+      if (t === 'conversation.item.input_audio_transcription.completed') {
+        const transcript = event.transcript?.trim();
+        if (transcript) this._addMsg('user', transcript);
+        return;
+      }
+
+      if (t === 'response.created') return;
+
+      if (t === 'response.audio.delta') {
+        const delta = event.delta;
+        if (delta) this.audio.playAudioDelta(delta);
+        return;
+      }
+
+      if (t === 'response.audio_transcript.delta') {
+        const delta = event.delta || '';
+        this.currentAiText += delta;
+        if (!this.currentAiMsgEl) {
+          this.currentAiMsgEl = this._addMsg('assistant', this.currentAiText, true);
+        } else {
+          this._updateMsgText(this.currentAiMsgEl, this.currentAiText, true);
+        }
+        this._scrollBottom();
+        return;
+      }
+
+      // Text-only response delta (for text-based LLM responses)
+      if (t === 'response.text.delta') {
+        const delta = event.delta || '';
+        this.currentAiText += delta;
+        if (!this.currentAiMsgEl) {
+          this.currentAiMsgEl = this._addMsg('assistant', this.currentAiText, true);
+        } else {
+          this._updateMsgText(this.currentAiMsgEl, this.currentAiText, true);
+        }
+        this._scrollBottom();
+        return;
+      }
+
+      if (t === 'response.done') {
+        this._finalizeAiMsg();
+        return;
+      }
+
+      if (t === 'error') {
+        const msg = event.error?.message || 'Unknown error';
+        this._addSystemMsg('⚠️ 错误: ' + msg);
+        console.error('Server error:', event.error);
+        return;
+      }
+
+      // 其他未处理事件
+      // console.log('Unhandled event:', t, event);
+    }
+
+    _finalizeAiMsg() {
+      if (this.currentAiMsgEl) {
+        // Store raw text and do final markdown render
+        this.rawTextMap.set(this.currentAiMsgEl, this.currentAiText);
+        this._updateMsgText(this.currentAiMsgEl, this.currentAiText, false);
+        // Add per-message action buttons
+        this._addMsgActions(this.currentAiMsgEl);
+      }
+      this.currentAiMsgEl = null;
+      this.currentAiText = '';
+    }
+
+    // ======================== Mic toggle ========================
+    async toggleMic() {
+      if (this.isListening) {
+        this.audio.stopCapture();
+        this.isListening = false;
+        this.$.micBtn.classList.remove('active');
+        this._setVAD(false);
+        this._setInputMode('idle');
+      } else {
+        try {
+          // Blur text input when switching to voice
+          this.$.textInput.blur();
+          await this.audio.startCapture();
+          this.isListening = true;
+          this.$.micBtn.classList.add('active');
+          this._setInputMode('voice');
+        } catch (err) {
+          console.error('Mic error:', err);
+          this._toast('无法访问麦克风：' + err.message, 'error');
+        }
+      }
+    }
+
+    // ======================== Audio sending ========================
+    _sendAudioChunk(pcm16Buffer) {
+      if (!this.isConnected) return;
+      this._sendWS({
+        type: 'input_audio_buffer.append',
+        audio: arrayBufferToBase64(pcm16Buffer),
+      });
+    }
+
+    // ======================== Text message ========================
+    sendText() {
+      const text = this.$.textInput.value.trim();
+      if (!text) return;
+
+      this.$.textInput.value = '';
+      this._addMsg('user', text);
+
+      // 发送 conversation item 和 response.create
+      this._sendWS({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text }]
+        }
+      });
+      this._sendWS({ type: 'response.create' });
+    }
+
+    // ======================== UI helpers ========================
+    _hideWelcome() {
+      if (this.$.welcome) {
+        this.$.welcome.style.display = 'none';
+      }
+    }
+
+    /**
+     * Add a chat message bubble.
+     * @param {'user'|'assistant'|'system'} role
+     * @param {string} text
+     * @param {boolean} streaming - show cursor if true
+     * @returns {HTMLElement} message element
+     */
+    _addMsg(role, text, streaming = false) {
+      this._hideWelcome();
+
+      if (role === 'system') return this._addSystemMsg(text);
+
+      const msg = document.createElement('div');
+      msg.className = `msg ${role}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'msg-avatar';
+      avatar.textContent = role === 'user' ? '你' : '🤖';
+
+      const body = document.createElement('div');
+      body.className = 'msg-body';
+
+      const roleLabel = document.createElement('div');
+      roleLabel.className = 'msg-role';
+      roleLabel.textContent = role === 'user' ? '你' : 'AI';
+
+      const textDiv = document.createElement('div');
+      textDiv.className = 'msg-text';
+
+      // Render markdown for non-streaming or apply plain text
+      if (this.markdownEnabled && !streaming) {
+        textDiv.innerHTML = renderMarkdown(text);
+        textDiv.classList.add('md-rendered');
+      } else if (this.markdownEnabled && streaming) {
+        // During streaming, render markdown in real-time with cursor
+        textDiv.innerHTML = renderMarkdown(text);
+        textDiv.classList.add('md-rendered');
+        const cursor = document.createElement('span');
+        cursor.className = 'cursor';
+        textDiv.appendChild(cursor);
+      } else {
+        textDiv.textContent = text;
+        if (streaming) {
+          const cursor = document.createElement('span');
+          cursor.className = 'cursor';
+          textDiv.appendChild(cursor);
+        }
+      }
+
+      // Store raw text
+      this.rawTextMap.set(msg, text);
+
+      body.appendChild(roleLabel);
+      body.appendChild(textDiv);
+      msg.appendChild(avatar);
+      msg.appendChild(body);
+
+      // Add action buttons for non-streaming user messages
+      if (role === 'user' && !streaming) {
+        this._addMsgActions(msg);
+      }
+
+      this.$.messages.appendChild(msg);
+      this._scrollBottom();
+      return msg;
+    }
+
+    _addSystemMsg(text) {
+      this._hideWelcome();
+      const msg = document.createElement('div');
+      msg.className = 'msg system';
+      const textDiv = document.createElement('div');
+      textDiv.className = 'msg-text';
+      textDiv.textContent = text;
+      msg.appendChild(textDiv);
+      this.$.messages.appendChild(msg);
+      this._scrollBottom();
+      return msg;
+    }
+
+    /**
+     * Update message text content. Uses throttled markdown rendering during streaming.
+     */
+    _updateMsgText(el, text, streaming) {
+      const textDiv = el.querySelector('.msg-text');
+      if (!textDiv) return;
+
+      // Store raw text
+      this.rawTextMap.set(el, text);
+
+      if (this.markdownEnabled) {
+        // Throttle markdown rendering during streaming (every ~80ms)
+        if (streaming) {
+          if (!el._mdThrottle) {
+            el._mdThrottle = true;
+            requestAnimationFrame(() => {
+              const latest = this.rawTextMap.get(el) || text;
+              textDiv.innerHTML = renderMarkdown(latest);
+              textDiv.classList.add('md-rendered');
+              const cursor = document.createElement('span');
+              cursor.className = 'cursor';
+              textDiv.appendChild(cursor);
+              el._mdThrottle = false;
+            });
+          }
+        } else {
+          textDiv.innerHTML = renderMarkdown(text);
+          textDiv.classList.add('md-rendered');
+        }
+      } else {
+        textDiv.textContent = text;
+        if (streaming) {
+          const cursor = document.createElement('span');
+          cursor.className = 'cursor';
+          textDiv.appendChild(cursor);
+        }
+      }
+    }
+
+    _setConnectionStatus(status) {
+      const dot = this.$.statusDot;
+      const txt = this.$.statusText;
+      dot.className = 'status-dot ' + status;
+      const labels = {
+        connected: '已连接',
+        connecting: '连接中...',
+        disconnected: '未连接',
+      };
+      txt.textContent = labels[status] || status;
+    }
+
+    _setVAD(speaking) {
+      this.$.vadBar.classList.toggle('speaking', speaking);
+      this.$.vadText.textContent = speaking ? 'VAD: 检测到语音' : 'VAD: 空闲';
+    }
+
+    _scrollBottom() {
+      requestAnimationFrame(() => {
+        this.$.chat.scrollTop = this.$.chat.scrollHeight;
+      });
+    }
+
+    _toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + type;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    // ======================== Markdown toggle ========================
+
+    /**
+     * Add per-message action buttons (toggle raw/rendered, copy).
+     */
+    _addMsgActions(msgEl) {
+      const body = msgEl.querySelector('.msg-body');
+      if (!body || msgEl.querySelector('.msg-actions')) return;
+
+      const actions = document.createElement('div');
+      actions.className = 'msg-actions';
+
+      // Toggle raw/rendered
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'msg-action-btn';
+      toggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg><span>源码</span>`;
+      toggleBtn.addEventListener('click', () => this._toggleMsgMarkdown(msgEl, toggleBtn));
+
+      // Copy message text
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'msg-action-btn';
+      copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>复制</span>`;
+      copyBtn.addEventListener('click', () => {
+        const raw = this.rawTextMap.get(msgEl) || '';
+        navigator.clipboard.writeText(raw).then(() => {
+          copyBtn.querySelector('span').textContent = '已复制!';
+          setTimeout(() => copyBtn.querySelector('span').textContent = '复制', 1500);
+        });
+      });
+
+      actions.appendChild(toggleBtn);
+      actions.appendChild(copyBtn);
+      body.appendChild(actions);
+    }
+
+    /**
+     * Toggle a single message between raw markdown and rendered view.
+     */
+    _toggleMsgMarkdown(msgEl, toggleBtn) {
+      const textDiv = msgEl.querySelector('.msg-text');
+      if (!textDiv) return;
+      const raw = this.rawTextMap.get(msgEl) || '';
+
+      // Preserve scroll position
+      const chat = this.$.chat;
+      const scrollBefore = chat.scrollTop;
+      const heightBefore = chat.scrollHeight;
+
+      if (textDiv.classList.contains('md-rendered')) {
+        // Switch to raw
+        textDiv.textContent = raw;
+        textDiv.classList.remove('md-rendered');
+        textDiv.classList.add('md-raw');
+        toggleBtn.querySelector('span').textContent = '预览';
+      } else {
+        // Switch to rendered
+        textDiv.innerHTML = renderMarkdown(raw);
+        textDiv.classList.remove('md-raw');
+        textDiv.classList.add('md-rendered');
+        toggleBtn.querySelector('span').textContent = '源码';
+      }
+
+      // Sync scroll position
+      const heightAfter = chat.scrollHeight;
+      chat.scrollTop = scrollBefore + (heightAfter - heightBefore);
+    }
+
+    /**
+     * Toggle markdown rendering globally for all messages.
+     */
+    _toggleGlobalMarkdown() {
+      this.markdownEnabled = !this.markdownEnabled;
+      this.$.mdToggle.classList.toggle('active', this.markdownEnabled);
+
+      // Preserve scroll
+      const chat = this.$.chat;
+      const scrollBefore = chat.scrollTop;
+      const heightBefore = chat.scrollHeight;
+
+      // Re-render all messages
+      this.$.messages.querySelectorAll('.msg').forEach(msgEl => {
+        if (msgEl.classList.contains('system')) return;
+        const textDiv = msgEl.querySelector('.msg-text');
+        if (!textDiv) return;
+        const raw = this.rawTextMap.get(msgEl);
+        if (!raw) return;
+
+        const toggleBtn = msgEl.querySelector('.msg-action-btn span');
+
+        if (this.markdownEnabled) {
+          textDiv.innerHTML = renderMarkdown(raw);
+          textDiv.classList.remove('md-raw');
+          textDiv.classList.add('md-rendered');
+          if (toggleBtn) toggleBtn.textContent = '源码';
+        } else {
+          textDiv.textContent = raw;
+          textDiv.classList.remove('md-rendered');
+          textDiv.classList.add('md-raw');
+          if (toggleBtn) toggleBtn.textContent = '预览';
+        }
+      });
+
+      // Sync scroll
+      const heightAfter = chat.scrollHeight;
+      chat.scrollTop = scrollBefore + (heightAfter - heightBefore);
+
+      this._toast(this.markdownEnabled ? 'Markdown 渲染已开启' : 'Markdown 渲染已关闭');
+    }
+  }
+
+  // ============================================================
+  // Bootstrap
+  // ============================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    const app = new App();
+    app.init().catch(console.error);
+  });
+  </script>
+</body>
+</html>

@@ -63,6 +63,8 @@ class OpenAIRealtimeTransport:
         self._on_response_create: Optional[Callable[[], Awaitable[None]]] = None
         self._on_response_cancel: Optional[Callable[[], Awaitable[None]]] = None
         self._on_conversation_item: Optional[Callable[[ConversationItem], Awaitable[None]]] = None
+        self._on_audio_commit: Optional[Callable[[], Awaitable[None]]] = None
+        self._on_text_message: Optional[Callable[[str], Awaitable[None]]] = None
         
         # 控制标志
         self._running = False
@@ -95,6 +97,16 @@ class OpenAIRealtimeTransport:
     def on_conversation_item(self, callback: Callable[[ConversationItem], Awaitable[None]]):
         """注册对话项创建回调"""
         self._on_conversation_item = callback
+        return self
+    
+    def on_audio_commit(self, callback: Callable[[], Awaitable[None]]):
+        """注册音频提交回调（手动 VAD 模式）"""
+        self._on_audio_commit = callback
+        return self
+    
+    def on_text_message(self, callback: Callable[[str], Awaitable[None]]):
+        """注册文本消息回调（当客户端发送 conversation.item.create 包含文本内容时）"""
+        self._on_text_message = callback
         return self
     
     # ==================== 生命周期管理 ====================
@@ -158,7 +170,7 @@ class OpenAIRealtimeTransport:
             handlers = {
                 ClientEventType.SESSION_UPDATE.value: self._handle_session_update,
                 ClientEventType.INPUT_AUDIO_BUFFER_APPEND.value: self._handle_audio_append,
-                # INPUT_AUDIO_BUFFER_COMMIT 已移除：内置 Server VAD 自动检测，不需要手动提交
+                ClientEventType.INPUT_AUDIO_BUFFER_COMMIT.value: self._handle_audio_commit,
                 ClientEventType.INPUT_AUDIO_BUFFER_CLEAR.value: self._handle_audio_clear,
                 ClientEventType.CONVERSATION_ITEM_CREATE.value: self._handle_conversation_item_create,
                 ClientEventType.CONVERSATION_ITEM_TRUNCATE.value: self._handle_conversation_item_truncate,
@@ -266,6 +278,35 @@ class OpenAIRealtimeTransport:
         except Exception as e:
             logger.error(f"音频处理错误: {e}")
     
+    async def _handle_audio_commit(self, event: Dict[str, Any]) -> None:
+        """处理音频缓冲区提交事件（手动 VAD 模式）
+        
+        当客户端禁用 server_vad (turn_detection=null) 时，
+        客户端会发送此事件来手动提交累积的音频。
+        支持客户端在事件中提供可选的 item_id。
+        """
+        # 优先使用客户端提供的 item_id，否则生成新 ID
+        client_item_id = event.get("item_id")
+        if client_item_id and isinstance(client_item_id, str) and client_item_id.strip():
+            item_id = client_item_id.strip()
+        else:
+            item_id = generate_id("item")
+        previous_item_id = self.state.current_item.id if self.state.current_item else None
+        
+        # 发送提交确认事件
+        await self._send_event(
+            ServerEventBuilder.input_audio_buffer_committed(
+                previous_item_id=previous_item_id,
+                item_id=item_id
+            )
+        )
+        
+        # 触发音频提交回调，让管道处理累积的音频
+        if self._on_audio_commit:
+            await self._on_audio_commit()
+        
+        logger.info("音频缓冲区已提交")
+    
     async def _handle_audio_clear(self, event: Dict[str, Any]) -> None:
         """处理音频缓冲区清空事件"""
         self.audio_buffer.clear()
@@ -277,7 +318,12 @@ class OpenAIRealtimeTransport:
         logger.info("音频缓冲区已清空")
     
     async def _handle_conversation_item_create(self, event: Dict[str, Any]) -> None:
-        """处理对话项创建事件"""
+        """处理对话项创建事件
+        
+        支持将历史对话注入 LLM 上下文，以下内容类型会被解析：
+        - input_text: 用户文本输入
+        - text: 文本内容
+        """
         item_data = event.get("item", {})
         
         item = ConversationItem(
@@ -295,6 +341,19 @@ class OpenAIRealtimeTransport:
         )
         
         self.state.current_item = item
+        
+        # 提取文本内容并注入 LLM 上下文
+        text_parts: list[str] = []
+        for content_part in item.content:
+            if isinstance(content_part, dict):
+                if content_part.get("type") in ("input_text", "text"):
+                    t = content_part.get("text", "")
+                    if t:
+                        text_parts.append(t)
+        text_content = " ".join(text_parts)
+        
+        if text_content and self._on_text_message:
+            await self._on_text_message(text_content)
         
         # 触发回调
         if self._on_conversation_item:
@@ -580,6 +639,72 @@ class OpenAIRealtimeTransport:
         self.state.current_response = None
         
         logger.info(f"响应完成: {response.id}")
+    
+    async def send_audio_committed(self, item_id: Optional[str] = None) -> str:
+        """
+        发送音频缓冲区提交事件
+        当 Server VAD 检测到语音结束后，服务器应发送此事件通知客户端音频已提交。
+        
+        Args:
+            item_id: 可选的项目 ID
+            
+        Returns:
+            item_id 字符串
+        """
+        item_id = item_id or generate_id("item")
+        previous_item_id = self.state.current_item.id if self.state.current_item else None
+        
+        await self._send_event(
+            ServerEventBuilder.input_audio_buffer_committed(
+                previous_item_id=previous_item_id,
+                item_id=item_id
+            )
+        )
+        
+        logger.debug(f"音频已提交: {item_id}")
+        return item_id
+    
+    async def send_transcription_completed(self, item_id: str, transcript: str,
+                                           content_index: int = 0) -> None:
+        """
+        发送输入音频转录完成事件
+        当 STT 完成转录后，通知客户端转录结果。
+        
+        Args:
+            item_id: 对应的对话项 ID
+            transcript: 转录文本
+            content_index: 内容索引
+        """
+        await self._send_event(
+            ServerEventBuilder.conversation_item_input_audio_transcription_completed(
+                item_id=item_id,
+                content_index=content_index,
+                transcript=transcript
+            )
+        )
+        
+        logger.info(f"转录完成: {transcript[:50]}...")
+    
+    async def send_transcription_failed(self, item_id: str, 
+                                        error_message: str = "Transcription failed",
+                                        content_index: int = 0) -> None:
+        """
+        发送输入音频转录失败事件
+        
+        Args:
+            item_id: 对应的对话项 ID
+            error_message: 错误信息
+            content_index: 内容索引
+        """
+        await self._send_event(
+            ServerEventBuilder.conversation_item_input_audio_transcription_failed(
+                item_id=item_id,
+                content_index=content_index,
+                error_message=error_message
+            )
+        )
+        
+        logger.warning(f"转录失败: {error_message}")
     
     async def cancel_response(self) -> None:
         """取消当前响应"""
