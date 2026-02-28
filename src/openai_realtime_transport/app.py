@@ -327,8 +327,11 @@ async def get_config():
 
 @app.get("/api/config/raw")
 async def get_config_raw(request: Request):
-    """读取 .env 原始值（密钥不脱敏，仅 DEBUG+本机可用）"""
-    # 安全检查：仅在 DEBUG 模式且请求来自本机回环地址时允许
+    """读取 .env 原始值（密钥不脱敏，仅 DEBUG+本机直连可用）"""
+    # 安全检查：拒绝经过代理转发的请求
+    if request.headers.get("x-forwarded-for") or request.headers.get("forwarded"):
+        raise HTTPException(status_code=403, detail="不允许通过代理访问原始配置")
+    # 仅在 DEBUG 模式且请求来自本机回环地址时允许
     debug = config.server.debug
     client_host = request.client.host if request.client else ""
     is_local = client_host in ("127.0.0.1", "::1")
@@ -342,7 +345,22 @@ async def get_config_raw(request: Request):
 async def save_config(request: Request):
     """保存配置到 .env 文件"""
     body = await request.json()
-    values: dict[str, str] = body.get("values", {})
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="请求体必须是 JSON 对象")
+
+    values = body.get("values", {})
+    if not isinstance(values, dict):
+        raise HTTPException(status_code=400, detail="values 必须是一个字典")
+
+    # 强制将 key/value 转换为字符串, 拒绝非标量类型
+    sanitized: dict[str, str] = {}
+    for k, v in values.items():
+        if not isinstance(k, str):
+            raise HTTPException(status_code=400, detail=f"配置项 key 必须是字符串，收到: {type(k).__name__}")
+        if isinstance(v, (list, dict)):
+            raise HTTPException(status_code=400, detail=f"配置项 {k} 的值不能是 {type(v).__name__} 类型")
+        sanitized[k] = str(v) if v is not None else ""
+    values = sanitized
 
     if not values:
         raise HTTPException(status_code=400, detail="没有提供任何配置项")
