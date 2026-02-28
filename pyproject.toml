@@ -30,6 +30,9 @@ dependencies = [
 
     # TTS: Edge TTS (免费)
     "edge-tts>=6.1.0",
+
+    # 音频解码（MP3/WAV/FLAC/Vorbis → PCM，内置 C 解码器，无需 ffmpeg）
+    "miniaudio>=1.50",
 ]
 
 [project.optional-dependencies]

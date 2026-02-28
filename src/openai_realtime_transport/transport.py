@@ -11,13 +11,13 @@ from dataclasses import dataclass, field
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from protocol import (
+from .protocol import (
     ClientEventType, ServerEventType, ServerEventBuilder,
     SessionConfig, TurnDetection, ConversationItem, Response,
     generate_id
 )
-from audio_utils import AudioConverter, AudioBuffer, calculate_audio_duration_ms
-from config import config
+from .audio_utils import AudioConverter, AudioBuffer, calculate_audio_duration_ms
+from .config import config
 
 logger = logging.getLogger(__name__)
 
@@ -219,10 +219,10 @@ class OpenAIRealtimeTransport:
                 self.state.session.turn_detection = None
             else:
                 self.state.session.turn_detection = TurnDetection(
-                    type=td.get("type", "server_vad"),
-                    threshold=td.get("threshold", 0.5),
-                    prefix_padding_ms=td.get("prefix_padding_ms", 300),
-                    silence_duration_ms=td.get("silence_duration_ms", 500),
+                    type=td.get("type", config.vad.type),
+                    threshold=td.get("threshold", config.vad.threshold),
+                    prefix_padding_ms=td.get("prefix_padding_ms", config.vad.prefix_padding_ms),
+                    silence_duration_ms=td.get("silence_duration_ms", config.vad.silence_duration_ms),
                     create_response=td.get("create_response", True),
                 )
         
@@ -236,7 +236,7 @@ class OpenAIRealtimeTransport:
         if "input_audio_transcription" in session_data:
             iat = session_data["input_audio_transcription"]
             if iat:
-                from protocol import InputAudioTranscription
+                from .protocol import InputAudioTranscription
                 self.state.session.input_audio_transcription = InputAudioTranscription(
                     model=iat.get("model", "whisper-1")
                 )

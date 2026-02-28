@@ -12,6 +12,11 @@ import pytest
 
 # 测试辅助：项目根目录
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = PROJECT_ROOT / "src"
+
+import sys
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
 
 # ========== .env 自动创建 ==========
@@ -31,7 +36,7 @@ class TestEnsureEnvFile:
         example.write_text("LLM_MODEL_NAME=Test\n", encoding="utf-8")
 
         # Mock 路径常量
-        import config as cfg_mod
+        import openai_realtime_transport.config as cfg_mod
         with patch.object(cfg_mod, "_ENV_FILE", env), \
              patch.object(cfg_mod, "_ENV_EXAMPLE_FILE", example):
             result = cfg_mod.ensure_env_file()
@@ -46,7 +51,7 @@ class TestEnsureEnvFile:
         env.write_text("EXISTING=1\n", encoding="utf-8")
         example.write_text("LLM_MODEL_NAME=ShouldNotOverwrite\n", encoding="utf-8")
 
-        import config as cfg_mod
+        import openai_realtime_transport.config as cfg_mod
         with patch.object(cfg_mod, "_ENV_FILE", env), \
              patch.object(cfg_mod, "_ENV_EXAMPLE_FILE", example):
             result = cfg_mod.ensure_env_file()
@@ -58,7 +63,7 @@ class TestEnsureEnvFile:
         """若 .env 和 .env.example 均不存在 → 创建最小化 .env"""
         env, example = self._isolate(tmp_path)
 
-        import config as cfg_mod
+        import openai_realtime_transport.config as cfg_mod
         with patch.object(cfg_mod, "_ENV_FILE", env), \
              patch.object(cfg_mod, "_ENV_EXAMPLE_FILE", example):
             result = cfg_mod.ensure_env_file()
@@ -77,7 +82,7 @@ class TestValidateConfig:
 
     def _make_config(self, **overrides):
         """创建一个带有合理默认值的 Config 实例"""
-        from config import (
+        from openai_realtime_transport.config import (
             Config, AudioConfig, VADConfig, STTConfig, LLMConfig, TTSConfig, ServerConfig,
         )
         llm_kw = {
@@ -136,7 +141,7 @@ class TestValidateConfig:
 
     def test_valid_config_no_errors(self):
         """完全合法的配置应无错误"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config()
         errors = validate_config(cfg)
         real_errors = [e for e in errors if e.level == "error"]
@@ -144,7 +149,7 @@ class TestValidateConfig:
 
     def test_missing_llm_api_key(self):
         """LLM_API_KEY 为空应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(llm_api_key="")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -152,7 +157,7 @@ class TestValidateConfig:
 
     def test_missing_llm_base_url(self):
         """LLM_BASE_URL 为空应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(llm_base_url="")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -160,7 +165,7 @@ class TestValidateConfig:
 
     def test_invalid_llm_base_url(self):
         """LLM_BASE_URL 无效格式应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(llm_base_url="not-a-url")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -168,7 +173,7 @@ class TestValidateConfig:
 
     def test_missing_llm_model_id(self):
         """LLM_MODEL_ID 为空应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(llm_model_id="")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -176,7 +181,7 @@ class TestValidateConfig:
 
     def test_missing_llm_model_name_warning(self):
         """LLM_MODEL_NAME 为空应产生 warning（非 error）"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(llm_model_name="")
         errors = validate_config(cfg)
         warnings = [e for e in errors if e.level == "warning" and e.field == "LLM_MODEL_NAME"]
@@ -184,7 +189,7 @@ class TestValidateConfig:
 
     def test_temperature_out_of_range(self):
         """LLM_TEMPERATURE 超出范围应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(llm_temperature=3.0)
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -192,7 +197,7 @@ class TestValidateConfig:
 
     def test_invalid_stt_provider(self):
         """不支持的 STT_PROVIDER 应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(stt_provider="unknown")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -200,7 +205,7 @@ class TestValidateConfig:
 
     def test_deepgram_missing_api_key(self):
         """使用 Deepgram 但无 API Key 应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(stt_provider="deepgram", stt_deepgram_api_key="")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -208,7 +213,7 @@ class TestValidateConfig:
 
     def test_openai_whisper_fallback_llm_key(self):
         """openai_whisper 使用 STT_API_KEY 为空时回退 LLM_API_KEY 应通过"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(stt_provider="openai_whisper", stt_stt_api_key="")
         errors = validate_config(cfg)
         stt_errors = [e for e in errors if e.field == "STT_API_KEY"]
@@ -216,7 +221,7 @@ class TestValidateConfig:
 
     def test_openai_whisper_no_key_at_all(self):
         """openai_whisper 且 STT_API_KEY 和 LLM_API_KEY 均为空应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(stt_provider="openai_whisper", stt_stt_api_key="", llm_api_key="")
         errors = validate_config(cfg)
         stt_fields = [e.field for e in errors if e.field == "STT_API_KEY"]
@@ -224,7 +229,7 @@ class TestValidateConfig:
 
     def test_invalid_tts_provider(self):
         """不支持的 TTS_PROVIDER 应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(tts_provider="google_tts")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -232,7 +237,7 @@ class TestValidateConfig:
 
     def test_elevenlabs_missing_api_key(self):
         """使用 ElevenLabs 但无 API Key 应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(tts_provider="elevenlabs", tts_elevenlabs_api_key="")
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -240,7 +245,7 @@ class TestValidateConfig:
 
     def test_openai_tts_fallback_llm_key(self):
         """openai_tts 使用 TTS_API_KEY 为空时回退 LLM_API_KEY 应通过"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(tts_provider="openai_tts", tts_tts_api_key="")
         errors = validate_config(cfg)
         tts_errors = [e for e in errors if e.field == "TTS_API_KEY"]
@@ -248,7 +253,7 @@ class TestValidateConfig:
 
     def test_openai_tts_no_key_at_all(self):
         """openai_tts 且 TTS_API_KEY 和 LLM_API_KEY 均为空应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(tts_provider="openai_tts", tts_tts_api_key="", llm_api_key="")
         errors = validate_config(cfg)
         tts_fields = [e.field for e in errors if e.field == "TTS_API_KEY"]
@@ -256,7 +261,7 @@ class TestValidateConfig:
 
     def test_vad_threshold_out_of_range(self):
         """VAD_THRESHOLD 超出 0-1 应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(vad_threshold=1.5)
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]
@@ -264,7 +269,7 @@ class TestValidateConfig:
 
     def test_server_port_out_of_range(self):
         """SERVER_PORT 超出范围应报错"""
-        from config import validate_config
+        from openai_realtime_transport.config import validate_config
         cfg = self._make_config(server_port=99999)
         errors = validate_config(cfg)
         fields = [e.field for e in errors if e.level == "error"]

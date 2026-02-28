@@ -86,6 +86,37 @@ def resample_to_24k(audio_bytes: bytes, from_rate: int = INTERNAL_SAMPLE_RATE) -
     return resample_audio(audio_bytes, from_rate, SAMPLE_RATE)
 
 
+def decode_audio_to_pcm16(audio_bytes: bytes, target_rate: int = INTERNAL_SAMPLE_RATE) -> bytes:
+    """将编码音频（MP3/WAV/FLAC/OGG 等）解码为原始 PCM16
+
+    使用 miniaudio 内置解码器，无需外部 ffmpeg 依赖。
+
+    Args:
+        audio_bytes: 编码后的音频数据（支持 MP3/WAV/FLAC/Vorbis）
+        target_rate: 目标采样率 (Hz)，默认 16000
+
+    Returns:
+        解码后的 PCM16 音频数据 (signed 16-bit LE, mono)
+    """
+    if not audio_bytes:
+        return b""
+    try:
+        import miniaudio
+        decoded = miniaudio.decode(
+            audio_bytes,
+            output_format=miniaudio.SampleFormat.SIGNED16,
+            nchannels=1,
+            sample_rate=target_rate,
+        )
+        return bytes(decoded.samples)
+    except ImportError:
+        logger.error("miniaudio 未安装，无法解码 MP3 音频。请运行: pip install miniaudio")
+        return b""
+    except Exception as e:
+        logger.error(f"音频解码失败: {e}")
+        return b""
+
+
 # ==================== 音频转换器 ====================
 
 class AudioConverter:

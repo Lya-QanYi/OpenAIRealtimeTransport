@@ -1,6 +1,6 @@
 # OpenAI Realtime API Compatible Server
 
-[中文](README.md) | English
+[中文](../README.md) | English
 
 A local WebSocket server that mirrors the OpenAI Realtime API protocol, so you can swap OpenAI with local or third‑party model providers while keeping the client mostly unchanged.
 
@@ -18,21 +18,28 @@ A local WebSocket server that mirrors the OpenAI Realtime API protocol, so you c
 ## 📁 Project Structure
 
 ```
-├── main.py                 # FastAPI server entry (serves WebUI static files)
-├── config.py               # Config management (.env supported)
-├── logger_config.py        # Logging configuration module
-├── service_providers.py    # STT/LLM/TTS provider implementations
-├── protocol.py             # OpenAI Realtime API protocol definitions
-├── transport.py            # WebSocket Transport layer (protocol translator)
-├── pipeline_manager.py     # Pipeline manager
-├── realtime_session.py     # Session lifecycle manager
-├── audio_utils.py          # Audio utilities (resampling, etc.)
+├── src/
+│   └── openai_realtime_transport/
+│       ├── app.py          # FastAPI server (core implementation)
+│       ├── config.py       # Config management (.env supported)
+│       ├── logger_config.py
+│       ├── service_providers.py
+│       ├── protocol.py
+│       ├── transport.py
+│       ├── pipeline_manager.py
+│       ├── realtime_session.py
+│       └── audio_utils.py
+├── main.py                 # Startup entry (loads app from src package)
 ├── static/                 # Browser WebUI static files
 │   ├── index.html          # WebUI main page (voice chat + Markdown rendering)
 │   ├── settings.html       # Config management page (online .env editor)
 │   └── audio-worklet.js    # Web Audio processors
-├── push_to_talk_app.py     # WebUI launcher (starts server + opens browser)
-├── test_client.py          # Simple test client
+├── scripts/                # Helper scripts
+│   ├── push_to_talk_app.py # WebUI launcher (starts server + opens browser)
+│   └── test_client.py      # Simple test client
+├── docs/                   # Additional docs
+│   ├── QUICKSTART.md       # Quickstart guide (Chinese)
+│   └── SILICONFLOW.md      # SiliconFlow setup (Chinese)
 ├── tests/
 │   └── test_config.py      # Config module unit tests (29 cases)
 ├── pyproject.toml          # Project config & dependency definitions
@@ -101,7 +108,7 @@ EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
 More docs:
 - [QUICKSTART.md](QUICKSTART.md) (Chinese) – practical recipes
 - [SILICONFLOW.md](SILICONFLOW.md) (Chinese) – SiliconFlow setup
-- [.env.example](.env.example) – full config template
+- [../.env.example](../.env.example) – full config template
 
 ### 3) Start the server
 
@@ -123,7 +130,7 @@ The server includes a built-in WebUI. After starting the server, open your brows
 http://localhost:8000
 
 # Or use the launcher (starts server + opens browser automatically)
-uv run python push_to_talk_app.py
+uv run python scripts/push_to_talk_app.py
 ```
 
 Notes:
@@ -141,8 +148,8 @@ Notes:
 #### Option B: Simple test client
 
 ```bash
-uv run python test_client.py
-uv run python test_client.py -i
+uv run python scripts/test_client.py
+uv run python scripts/test_client.py -i
 ```
 
 #### Option C: Use OpenAI SDK (pointing to this server)
@@ -171,16 +178,16 @@ Client ← OpenAI-style JSON ← Transport (translate) ← (VAD → STT → LLM 
 
 ### Key components
 
-1. **Transport** ([transport.py](transport.py))
+1. **Transport** ([src/openai_realtime_transport/transport.py](../src/openai_realtime_transport/transport.py))
    - Converts OpenAI-style events to internal frames and back
 
-2. **Pipeline Manager** ([pipeline_manager.py](pipeline_manager.py))
+2. **Pipeline Manager** ([src/openai_realtime_transport/pipeline_manager.py](../src/openai_realtime_transport/pipeline_manager.py))
    - VAD / STT / LLM / TTS orchestration
 
-3. **Session Manager** ([realtime_session.py](realtime_session.py))
+3. **Session Manager** ([src/openai_realtime_transport/realtime_session.py](../src/openai_realtime_transport/realtime_session.py))
    - WebSocket session lifecycle; connects Transport ↔ Pipeline
 
-4. **Audio Utilities** ([audio_utils.py](audio_utils.py))
+4. **Audio Utilities** ([src/openai_realtime_transport/audio_utils.py](../src/openai_realtime_transport/audio_utils.py))
    - Audio resampling (24kHz ↔ 16kHz)
    - Audio buffer management
 
@@ -216,7 +223,7 @@ Client ← OpenAI-style JSON ← Transport (translate) ← (VAD → STT → LLM 
 
 ## 📝 Configuration
 
-All configuration is done via `.env` file. See [.env.example](.env.example) for the complete template.
+All configuration is done via `.env` file. See [../.env.example](../.env.example) for the complete template.
 
 The `.env` file is auto-created from `.env.example` on first startup if it doesn't exist.
 
@@ -242,4 +249,4 @@ VAD_PREFIX_PADDING_MS=300    # Speech prefix padding (ms)
 
 ## 📄 License
 
-MIT License — see [LICENSE](LICENSE).
+MIT License — see [../LICENSE](../LICENSE).

@@ -26,6 +26,10 @@ class CaptureProcessor extends AudioWorkletProcessor {
 
     this._buffer = new Float32Array(this._nativeChunk);
     this._writeIdx = 0;
+
+    // 音量计量：每 N 个 chunk 发送一次音量数据（N×20ms 间隔）
+    this._chunkCount = 0;
+    this._volumeInterval = 3; // ~60ms
   }
 
   /**
@@ -56,13 +60,37 @@ class CaptureProcessor extends AudioWorkletProcessor {
       this._buffer[this._writeIdx++] = channel[i];
 
       if (this._writeIdx >= this._nativeChunk) {
+        // ── 计算实时音量 (RMS + Peak) ──
+        let sumSq = 0;
+        let peak = 0;
+        for (let k = 0; k < this._nativeChunk; k++) {
+          const s = this._buffer[k];
+          sumSq += s * s;
+          const abs = s < 0 ? -s : s;
+          if (abs > peak) peak = abs;
+        }
+        const rms = Math.sqrt(sumSq / this._nativeChunk);
+
+        // 周期性发送音量数据到主线程
+        this._chunkCount++;
+        if (this._chunkCount >= this._volumeInterval) {
+          this._chunkCount = 0;
+          const dB = rms > 1e-5 ? 20 * Math.log10(rms) : -100;
+          this.port.postMessage({
+            type: 'volume',
+            rms,
+            peak,
+            dB: Math.round(dB * 10) / 10
+          });
+        }
+
+        // ── 重采样 + PCM16 编码 ──
         const resampled = this._resample(
           this._buffer,
           this._nativeRate,
           this._targetRate
         );
 
-        // Float32 → Int16 (PCM16)
         const pcm16 = new Int16Array(resampled.length);
         for (let j = 0; j < resampled.length; j++) {
           const s = Math.max(-1, Math.min(1, resampled[j]));

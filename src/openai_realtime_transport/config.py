@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # ── .env 自动创建 ──────────────────────────────────────────
 
-_PROJECT_ROOT = Path(__file__).parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _ENV_FILE = _PROJECT_ROOT / ".env"
 _ENV_EXAMPLE_FILE = _PROJECT_ROOT / ".env.example"
 
@@ -68,7 +68,7 @@ class VADConfig:
     """语音活动检测配置（内置 Server VAD，自由麦模式）"""
     type: str = "server_vad"
     silence_duration_ms: int = field(default_factory=lambda: int(os.getenv("VAD_SILENCE_DURATION_MS", "500")))
-    threshold: float = field(default_factory=lambda: float(os.getenv("VAD_THRESHOLD", "0.5")))
+    threshold: float = field(default_factory=lambda: float(os.getenv("VAD_THRESHOLD", "0.3")))
     prefix_padding_ms: int = field(default_factory=lambda: int(os.getenv("VAD_PREFIX_PADDING_MS", "300")))
     enabled: bool = True
 

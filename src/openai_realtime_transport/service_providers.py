@@ -425,13 +425,13 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
         text: str,
         on_audio_chunk: Callable[[bytes], Awaitable[None]]
     ) -> bytes:
-        """流式合成 ElevenLabs 语音"""
+        """流式合成 ElevenLabs 语音（PCM16 16kHz 输出）"""
         try:
             import aiohttp
             
-            url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}/stream"
+            # 请求 PCM16 输出 (16kHz)，避免 MP3 解码
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}/stream?output_format=pcm_16000"
             headers = {
-                "Accept": "audio/mpeg",
                 "Content-Type": "application/json",
                 "xi-api-key": self.api_key
             }
@@ -453,6 +453,7 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
                     async with session.post(url, headers=headers, json=data) as response:
                         if response.status == 200:
                             async for chunk in response.content.iter_chunked(4096):
+                                # 确保 PCM16 字节对齐（2 bytes/sample）
                                 full_audio += chunk
                                 await on_audio_chunk(chunk)
                         else:
@@ -465,7 +466,11 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
                 logger.error(f"ElevenLabs TTS 连接错误: {client_err}")
                 return b""
             
-            logger.debug(f"🔊 TTS 完成: {len(full_audio)} bytes")
+            # PCM16 必须 2 字节对齐
+            if len(full_audio) % 2 != 0:
+                full_audio = full_audio[:-1]
+
+            logger.debug(f"🔊 TTS 完成: {len(full_audio)} bytes (PCM16 16kHz)")
             return full_audio
             
         except Exception as e:
@@ -484,9 +489,14 @@ class EdgeTTSProvider(BaseTTSProvider):
         text: str,
         on_audio_chunk: Callable[[bytes], Awaitable[None]]
     ) -> bytes:
-        """流式合成 Edge TTS 语音"""
+        """流式合成 Edge TTS 语音
+
+        edge_tts 仅支持 MP3 输出，因此收集完整 MP3 数据后解码为 PCM16，
+        再分块发送。解码使用 miniaudio 内置解码器（无需 ffmpeg）。
+        """
         try:
             import edge_tts
+            from .audio_utils import decode_audio_to_pcm16, INTERNAL_SAMPLE_RATE
 
             text = (text or "").strip()
             if not text:
@@ -525,20 +535,31 @@ class EdgeTTSProvider(BaseTTSProvider):
                         receive_timeout=receive_timeout,
                     )
 
-                    full_audio = b""
+                    # 收集完整 MP3 数据（edge_tts 仅支持 MP3 输出）
+                    mp3_buffer = b""
                     async for chunk in communicate.stream():
                         if chunk["type"] == "audio":
-                            audio_data = chunk["data"]
-                            full_audio += audio_data
-                            await on_audio_chunk(audio_data)
+                            mp3_buffer += chunk["data"]
 
-                    if full_audio:
-                        logger.debug(f"🔊 TTS 完成 (voice={voice}): {len(full_audio)} bytes")
-                        return full_audio
+                    if not mp3_buffer:
+                        last_error = RuntimeError("No audio was received")
+                        logger.warning(f"Edge TTS 无音频返回，尝试切换 voice: {voice}")
+                        continue
 
-                    # stream 结束但没有任何音频块
-                    last_error = RuntimeError("No audio was received")
-                    logger.warning(f"Edge TTS 无音频返回，尝试切换 voice: {voice}")
+                    # 解码 MP3 → PCM16 (16kHz mono)
+                    pcm_audio = decode_audio_to_pcm16(mp3_buffer, target_rate=INTERNAL_SAMPLE_RATE)
+                    if not pcm_audio:
+                        last_error = RuntimeError("MP3 decode failed")
+                        logger.warning(f"Edge TTS MP3 解码失败 (voice={voice})，尝试下一个")
+                        continue
+
+                    # 分块发送 PCM16 数据
+                    chunk_size = 4096  # 2048 samples per chunk
+                    for i in range(0, len(pcm_audio), chunk_size):
+                        await on_audio_chunk(pcm_audio[i:i + chunk_size])
+
+                    logger.debug(f"🔊 TTS 完成 (voice={voice}): MP3 {len(mp3_buffer)} bytes → PCM {len(pcm_audio)} bytes")
+                    return pcm_audio
 
                 except Exception as e:
                     last_error = e
@@ -618,7 +639,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         # 统一到内部 16kHz。
         # 重要：如果重采样失败，不能把 24kHz 的音频当作 16kHz 往下游送，否则会造成
         # frame.sample_rate 元数据不一致，影响时长计算、静音检测等逻辑。
-        from audio_utils import resample_audio, SAMPLE_RATE as _CLIENT_SR, INTERNAL_SAMPLE_RATE as _INTERNAL_SR
+        from .audio_utils import resample_audio, SAMPLE_RATE as _CLIENT_SR, INTERNAL_SAMPLE_RATE as _INTERNAL_SR
         try:
             full_audio = resample_audio(full_audio, from_rate=_CLIENT_SR, to_rate=_INTERNAL_SR)
         except Exception as e:

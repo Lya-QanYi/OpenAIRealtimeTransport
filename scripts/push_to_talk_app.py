@@ -5,7 +5,7 @@ WebUI 客户端启动器
 启动 Realtime API 服务器并自动在浏览器中打开 WebUI。
 
 使用方式:
-    uv run python push_to_talk_app.py
+    uv run python scripts/push_to_talk_app.py
 
 也可以分开操作:
     1. 终端 1: uv run python main.py          # 启动服务器
