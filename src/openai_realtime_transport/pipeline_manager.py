@@ -8,14 +8,14 @@ from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from config import config, print_config
-from service_providers import (
+from .config import config, print_config
+from .service_providers import (
     ServiceFactory, 
     BaseSTTProvider, 
     BaseLLMProvider, 
     BaseTTSProvider
 )
-from logger_config import get_logger
+from .logger_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,9 @@ class VADService(BaseService):
         self._silero_float_buffer = []  # float32[-1,1] 缓冲
         self._silero_silence_ms = 0.0
         self._silero_consec_speech = 0
-        self._silero_min_speech_chunks = 2  # 连续命中次数，降低误触发
+        self._silero_min_speech_chunks = 1  # 连续命中次数（Silero 已足够鲁棒，1 即可）
+        self._silero_speech_window = []  # 最近 N 个 chunk 的概率，用于平滑判断
+        self._silero_window_size = 4     # 滑动窗口大小（4×32ms = 128ms）
         try:
             import torch
             # 使用 torch.hub 从官方仓库加载模型（使用 ONNX 版本以避免 Windows 路径问题）
@@ -184,7 +186,7 @@ class VADService(BaseService):
         if self._silero_available and self._silero_model is not None:
             try:
                 import torch
-                from audio_utils import resample_audio
+                from .audio_utils import resample_audio
 
                 # 如输入不是 16kHz，先重采样到 16kHz（避免“仅支持 512/256 样本窗口”的限制）
                 if frame.sample_rate != self._silero_sr:
@@ -206,11 +208,19 @@ class VADService(BaseService):
                     chunk_tensor = torch.tensor(chunk, dtype=torch.float32)
                     speech_prob = float(self._silero_model(chunk_tensor, self._silero_sr).item())
 
+                    # 滑动窗口平滑：用最近 N 个 chunk 的平均概率判断
+                    self._silero_speech_window.append(speech_prob)
+                    if len(self._silero_speech_window) > self._silero_window_size:
+                        self._silero_speech_window.pop(0)
+                    avg_prob = sum(self._silero_speech_window) / len(self._silero_speech_window)
+
                     if speech_prob >= self.threshold:
                         self._silero_consec_speech += 1
                         self._silero_silence_ms = 0.0
                     else:
-                        self._silero_consec_speech = 0
+                        # 不立即重置：仅当滑动窗口平均也低于阈值时才重置
+                        if avg_prob < self.threshold:
+                            self._silero_consec_speech = 0
                         if self._is_speaking:
                             self._silero_silence_ms += chunk_ms
 
@@ -218,6 +228,7 @@ class VADService(BaseService):
                     if (not self._is_speaking) and self._silero_consec_speech >= self._silero_min_speech_chunks:
                         self._is_speaking = True
                         self._silence_frames = 0
+                        logger.debug(f"VAD speech start: prob={speech_prob:.3f} avg={avg_prob:.3f} threshold={self.threshold}")
                         if self._on_speech_start:
                             await self._on_speech_start()
                         return UserStartedSpeakingFrame()
@@ -227,6 +238,8 @@ class VADService(BaseService):
                         self._is_speaking = False
                         self._silero_silence_ms = 0.0
                         self._silence_frames = 0
+                        self._silero_speech_window.clear()
+                        logger.debug(f"VAD speech end: silence_ms={self.silence_duration_ms}")
                         if self._on_speech_end:
                             await self._on_speech_end()
                         return UserStoppedSpeakingFrame()
@@ -239,6 +252,7 @@ class VADService(BaseService):
                 self._silero_float_buffer = []
                 self._silero_silence_ms = 0.0
                 self._silero_consec_speech = 0
+                self._silero_speech_window = []
         
         # 回退：简单的能量检测 VAD
         # 计算 RMS 能量
@@ -246,8 +260,8 @@ class VADService(BaseService):
         
         # 使用动态阈值，避免底噪触发
         # 32768 是 Int16 的最大值
-        # 0.5 (默认) * 10000 = 5000 (约为 -16dB IFS)
-        base_threshold = max(self.threshold * 10000, 500)
+        # 0.3 (默认) * 5000 = 1500 (约为 -27dB FS，正常说话范围)
+        base_threshold = max(self.threshold * 5000, 300)
         is_speech = rms > base_threshold
         
         if is_speech and not self._is_speaking:
@@ -674,8 +688,11 @@ class PipelineManager:
             await self._on_response_audio(audio)
     
     async def _handle_response_end(self, full_text: str):
-        if self._on_response_end:
-            await self._on_response_end(full_text)
+        # ℹ️  此回调由 LLM 文本生成完成时触发，但此时 TTS 尚未开始。
+        # 不要在这里转发 _on_response_end，否则 RealtimeSession 会过早
+        # 清空 response_id，导致后续 TTS 音频 chunk 全部被丢弃。
+        # 真正的 response_end 由管道处理方法在 TTS 完成后主动触发。
+        pass
     
     # ==================== 公共接口 ====================
     
@@ -751,10 +768,16 @@ class PipelineManager:
                 
                 if self._cancelled:
                     return
-                    
+                
+                full_text = llm_result.text if isinstance(llm_result, LLMResponseFrame) else ""
+
                 # LLM 完成后触发 TTS
                 if isinstance(llm_result, LLMResponseFrame) and self.tts:
                     await self.tts.process(llm_result)
+
+                # ✅ TTS 完成后才发送 response_end（此时音频已全部发出）
+                if self._on_response_end:
+                    await self._on_response_end(full_text)
     
     async def push_audio(self, audio_bytes: bytes, sample_rate: int = 24000):
         """推送音频数据到管道（通过内置 VAD 自动检测）
@@ -813,9 +836,14 @@ class PipelineManager:
             
             if isinstance(stt_result, TranscriptionFrame) and self.llm:
                 llm_result = await self.llm.process(stt_result)
+                full_text = llm_result.text if isinstance(llm_result, LLMResponseFrame) else ""
                 
                 if isinstance(llm_result, LLMResponseFrame) and self.tts:
                     await self.tts.process(llm_result)
+
+                # ✅ TTS 完成后才发送 response_end
+                if self._on_response_end:
+                    await self._on_response_end(full_text)
     
     async def _process_text_response(self, text: str):
         """处理纯文本输入的响应流程（跳过 STT，直接 LLM -> TTS）"""
@@ -830,8 +858,14 @@ class PipelineManager:
         if self._cancelled:
             return
         
+        full_text = llm_result.text if isinstance(llm_result, LLMResponseFrame) else ""
+
         if isinstance(llm_result, LLMResponseFrame) and self.tts:
             await self.tts.process(llm_result)
+
+        # ✅ TTS 完成后才发送 response_end
+        if self._on_response_end:
+            await self._on_response_end(full_text)
     
     def inject_text_message(self, text: str, role: str = "user"):
         """将文本消息注入 LLM 对话历史上下文

@@ -18,9 +18,10 @@
    STT_PROVIDER=local_whisper
    WHISPER_MODEL=base
    
-   LLM_PROVIDER=ollama
-   OLLAMA_BASE_URL=http://localhost:11434
-   OLLAMA_MODEL=llama3:8b
+   LLM_MODEL_NAME=Ollama
+   LLM_BASE_URL=http://localhost:11434/v1
+   LLM_MODEL_ID=llama3:8b
+   LLM_API_KEY=ollama
    
    TTS_PROVIDER=edge_tts
    EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
@@ -48,14 +49,16 @@
    DEEPGRAM_API_KEY=你的_deepgram_key
    
    # 硅基流动 LLM (国内访问快，价格便宜，推荐！)
-   LLM_PROVIDER=siliconflow
-   SILICONFLOW_API_KEY=你的_siliconflow_key
-   SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
+   LLM_MODEL_NAME=SiliconFlow
+   LLM_BASE_URL=https://api.siliconflow.cn/v1
+   LLM_MODEL_ID=deepseek-ai/DeepSeek-V3
+   LLM_API_KEY=你的_siliconflow_key
    
    # 或使用 OpenAI LLM
-   # LLM_PROVIDER=openai
-   # OPENAI_API_KEY=你的_openai_key
-   # OPENAI_MODEL=gpt-4o-mini
+   # LLM_MODEL_NAME=OpenAI
+   # LLM_BASE_URL=https://api.openai.com/v1
+   # LLM_MODEL_ID=gpt-4o-mini
+   # LLM_API_KEY=你的_openai_key
    
    # Edge TTS (完全免费)
    TTS_PROVIDER=edge_tts
@@ -83,9 +86,10 @@
    DEEPGRAM_API_KEY=你的_deepgram_key
    
    # OpenAI LLM
-   LLM_PROVIDER=openai
-   OPENAI_API_KEY=你的_openai_key
-   OPENAI_MODEL=gpt-4o
+   LLM_MODEL_NAME=OpenAI
+   LLM_BASE_URL=https://api.openai.com/v1
+   LLM_MODEL_ID=gpt-4o
+   LLM_API_KEY=你的_openai_key
    
    # ElevenLabs TTS (高质量语音)
    TTS_PROVIDER=elevenlabs
@@ -191,7 +195,7 @@ uv run python main.py
 http://localhost:8000
 
 # 方法 B: 使用启动器（自动启动服务+打开浏览器）
-uv run python push_to_talk_app.py
+uv run python scripts/push_to_talk_app.py
 ```
 
 ### 5. 开始对话
@@ -210,7 +214,7 @@ uv run python push_to_talk_app.py
 运行以下命令查看当前配置：
 
 ```bash
-uv run python -c "from config import config, print_config; print_config()"
+uv run python -c "from openai_realtime_transport.config import config, print_config; print_config()"
 ```
 
 输出示例：
@@ -263,11 +267,11 @@ VAD 配置:
 
 ### 5. Ollama 连接失败
 
-**问题**: `LLM_PROVIDER=ollama` 时提示连接失败
+**问题**: `LLM_BASE_URL=http://localhost:11434/v1`（Ollama）时提示连接失败
 
 **解决**: 
 1. 确保 Ollama 服务正在运行
-2. 检查 `OLLAMA_BASE_URL` 是否正确
+2. 检查 `LLM_BASE_URL` 是否正确
 3. 运行 `ollama list` 确认模型已下载
 
 ### 6. 麦克风无法识别
@@ -296,6 +300,6 @@ VAD 配置:
 
 ## 📞 需要帮助？
 
-- 查看 [README.md](README.md) 了解详细文档
-- 查看 [.env.example](.env.example) 了解所有配置选项
+- 查看 [README.md](../README.md) 了解详细文档
+- 查看 [../.env.example](../.env.example) 了解所有配置选项
 - 提交 Issue: https://github.com/CN-QanYi/OpenAIRealtimeTransport/issues

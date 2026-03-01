@@ -133,7 +133,7 @@ ELEVENLABS_API_KEY=your-key
 确保已在 `.env` 中配置好 LLM 统一参数后，运行以下命令测试：
 
 ```bash
-uv run python -c "from service_providers import ServiceFactory; provider = ServiceFactory.create_llm_provider(); print('LLM provider created successfully!')"
+uv run python -c "from openai_realtime_transport.service_providers import ServiceFactory; provider = ServiceFactory.create_llm_provider(); print('LLM provider created successfully!')"
 ```
 
 ## 切换模型

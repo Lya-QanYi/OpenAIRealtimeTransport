@@ -1,6 +1,6 @@
 # OpenAI Realtime API 兼容服务器
 
-中文 | [English](README.en.md)
+中文 | [English](docs/README.en.md)
 
 一个完全复刻 OpenAI Realtime API 协议的本地 WebSocket 服务器，允许你使用本地或第三方模型替代 OpenAI。
 
@@ -9,30 +9,37 @@
 - 🔄 **完全兼容**：对外复刻 OpenAI Realtime API 的协议（URL、JSON 事件格式、音频编码）
 - 🔌 **统一 OpenAI 兼容格式**：LLM 配置采用统一的 OpenAI 兼容接口格式，仅需 4 项配置即可接入任意服务商
 - 🚀 **零客户端修改**：你的客户端应用只需修改 `baseUrl` 即可连接
-- 🎤 **内置 Server VAD**：集成 Pipecat 的 Silero VAD，默认启用自由麦模式，自动检测语音活动
+- 🎤 **内置 Server VAD**：集成 Silero VAD（可用时）并支持能量检测回退，默认启用自由麦模式，自动检测语音活动
 - 💻 **浏览器 WebUI**：内置浏览器语音交互界面，支持语音/文字双模式交互式输入
 - 📝 **Markdown 实时渲染**：AI 回复支持 Markdown 实时预览，代码高亮、一键复制、原文/渲染切换
 - ⚙️ **浏览器配置管理**：内置 Settings 页面，可直接在浏览器中编辑 .env 配置
-- 🌟 **支持硅基流动**：国内访问快，价格低廉（约为 OpenAI 的 1/10），详见 [SILICONFLOW.md](SILICONFLOW.md)
+- 🌟 **支持硅基流动**：国内访问快，价格低廉（约为 OpenAI 的 1/10），详见 [docs/SILICONFLOW.md](docs/SILICONFLOW.md)
 
 ## 📁 项目结构
 
-```
-├── main.py                 # FastAPI 主服务器（含 WebUI 静态文件服务）
-├── config.py               # 配置管理（支持 .env）
-├── logger_config.py        # 日志配置模块
-├── service_providers.py    # STT/LLM/TTS 服务提供商
-├── protocol.py             # OpenAI Realtime API 协议定义
-├── transport.py            # WebSocket Transport 层（协议翻译官）
-├── pipeline_manager.py     # Pipecat 管道管理器
-├── realtime_session.py     # 会话生命周期管理
-├── audio_utils.py          # 音频处理工具（重采样等）
+```text
+├── src/
+│   └── openai_realtime_transport/
+│       ├── app.py          # FastAPI 主服务器（核心实现）
+│       ├── config.py       # 配置管理（支持 .env）
+│       ├── logger_config.py
+│       ├── service_providers.py
+│       ├── protocol.py
+│       ├── transport.py
+│       ├── pipeline_manager.py
+│       ├── realtime_session.py
+│       └── audio_utils.py
+├── main.py                 # 启动入口（加载 src 包应用）
 ├── static/                 # 浏览器 WebUI 静态文件
 │   ├── index.html          # WebUI 主页面（语音对话 + Markdown 渲染）
 │   ├── settings.html       # 配置管理页面（在线编辑 .env）
 │   └── audio-worklet.js    # Web Audio 音频处理器
-├── push_to_talk_app.py     # WebUI 启动器（启动服务+打开浏览器）
-├── test_client.py          # 简单测试客户端
+├── scripts/                # 辅助脚本
+│   ├── push_to_talk_app.py # WebUI 启动器（启动服务+打开浏览器）
+│   └── test_client.py      # 简单测试客户端
+├── docs/                   # 扩展文档
+│   ├── QUICKSTART.md       # 快速入门指南
+│   └── SILICONFLOW.md      # 硅基流动配置指南
 ├── tests/
 │   └── test_config.py      # 配置模块单元测试（29 条）
 ├── pyproject.toml          # 项目配置与依赖定义
@@ -105,8 +112,8 @@ EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
 > 💡 也可以启动服务器后访问 `http://localhost:8000/settings` 在浏览器中直接编辑配置。
 
 详细配置说明请查看：
-- [QUICKSTART.md](QUICKSTART.md) - 快速入门指南
-- [SILICONFLOW.md](SILICONFLOW.md) - 硅基流动配置指南
+- [docs/QUICKSTART.md](docs/QUICKSTART.md) - 快速入门指南
+- [docs/SILICONFLOW.md](docs/SILICONFLOW.md) - 硅基流动配置指南
 - [.env.example](.env.example) - 完整配置模板
 
 ### 3. 启动服务器
@@ -125,8 +132,9 @@ uv run python main.py
 当前服务配置:
 ==================================================
 LLM 服务: SiliconFlow
-  - 接口: https://api.siliconflow.cn/v1
-  - 模型: deepseek-ai/DeepSeek-V3
+   - Base URL: https://api.siliconflow.cn/v1
+   - Model ID: deepseek-ai/DeepSeek-V3
+   - API Key:  sk-a****key9
 STT 服务: deepgram
 TTS 服务: edge_tts
 ==================================================
@@ -143,7 +151,7 @@ TTS 服务: edge_tts
 http://localhost:8000
 
 # 方法 B: 使用启动器（自动启动服务器+打开浏览器）
-uv run python push_to_talk_app.py
+uv run python scripts/push_to_talk_app.py
 ```
 
 **使用说明：**
@@ -170,10 +178,10 @@ uv run python push_to_talk_app.py
 
 ```bash
 # 自动测试模式
-uv run python test_client.py
+uv run python scripts/test_client.py
 
 # 交互模式
-uv run python test_client.py -i
+uv run python scripts/test_client.py -i
 ```
 
 #### 方式 3: 使用 OpenAI SDK
@@ -197,29 +205,29 @@ async with client.realtime.connect(model="gpt-realtime") as conn:
 ### 数据流向
 
 ```
-客户端 → OpenAI 格式 JSON → Transport (翻译) → Pipecat Pipeline
+客户端 → OpenAI 格式 JSON → Transport (翻译) → Pipeline
                                                     ↓
 客户端 ← OpenAI 格式 JSON ← Transport (翻译) ← (VAD→STT→LLM→TTS)
 ```
 
 ### 核心组件
 
-1. **Transport 层** (`transport.py`)
+1. **Transport 层** (`src/openai_realtime_transport/transport.py`)
    - 接收 OpenAI 格式的客户端事件
-   - 转换为 Pipecat 内部帧格式
+   - 转换为内部帧格式
    - 将输出转换回 OpenAI 格式
 
-2. **Pipeline 管理器** (`pipeline_manager.py`)
+2. **Pipeline 管理器** (`src/openai_realtime_transport/pipeline_manager.py`)
    - VAD：语音活动检测
    - STT：语音转文字
    - LLM：语言模型推理
    - TTS：文字转语音
 
-3. **会话管理** (`realtime_session.py`)
+3. **会话管理** (`src/openai_realtime_transport/realtime_session.py`)
    - 管理 WebSocket 会话生命周期
    - 协调 Transport 和 Pipeline
 
-4. **音频处理** (`audio_utils.py`)
+4. **音频处理** (`src/openai_realtime_transport/audio_utils.py`)
    - 音频重采样（24kHz ↔ 16kHz）
    - 音频缓冲区管理
 
@@ -301,7 +309,7 @@ EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
 
 ### VAD 配置（自由麦模式）
 ```bash
-VAD_THRESHOLD=0.5  # 灵敏度 (0.0-1.0)，越高越不敏感
+VAD_THRESHOLD=0.3  # 灵敏度 (0.0-1.0)，越高越不敏感，建议 0.2-0.5
 VAD_SILENCE_DURATION_MS=500  # 静音检测时长（毫秒）
 VAD_PREFIX_PADDING_MS=300  # 语音前缀填充（毫秒）
 ```
@@ -377,7 +385,7 @@ TTS: ElevenLabs
 
 ### 内置 Server VAD（自由麦模式）
 
-服务器内置了 Pipecat 的 Silero VAD，默认启用 `server_vad` 模式，自动检测用户的语音活动：
+服务器内置了 Silero VAD（可用时）并支持能量检测回退，默认启用 `server_vad` 模式，自动检测用户的语音活动：
 
 **工作流程：**
 1. 客户端连续发送音频数据（`input_audio_buffer.append`）
@@ -421,7 +429,7 @@ WebSocket 端点: ws://localhost:8000/v1/realtime
 ```bash
 # 直接在浏览器中打开 http://localhost:8000
 # 或使用启动器（自动启动服务+打开浏览器）
-uv run python push_to_talk_app.py
+uv run python scripts/push_to_talk_app.py
 ```
 
 ### 3. 开始对话
@@ -516,7 +524,7 @@ TTS_PROVIDER=edge_tts
 EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
 
 # ==================== VAD 配置 ====================
-VAD_THRESHOLD=0.5
+VAD_THRESHOLD=0.3
 VAD_SILENCE_DURATION_MS=500
 VAD_PREFIX_PADDING_MS=300
 ```

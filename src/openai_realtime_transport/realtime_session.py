@@ -8,11 +8,11 @@ from dataclasses import dataclass, field
 
 from fastapi import WebSocket
 
-from transport import OpenAIRealtimeTransport
-from pipeline_manager import PipelineManager
-from protocol import SessionConfig
-from config import config
-from logger_config import get_logger
+from .transport import OpenAIRealtimeTransport
+from .pipeline_manager import PipelineManager
+from .protocol import SessionConfig
+from .config import config
+from .logger_config import get_logger
 
 logger = get_logger(__name__)
 

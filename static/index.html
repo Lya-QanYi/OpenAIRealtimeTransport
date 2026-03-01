@@ -252,6 +252,126 @@
     .vad-bar.speaking .vad-dot { background: var(--success); }
     .vad-bar.speaking          { color: var(--success); }
 
+    /* Gain control & volume meter panel */
+    .gain-panel {
+      max-width: 800px;
+      margin: 0 auto 8px;
+      width: 100%;
+      padding: 8px 14px;
+      background: rgba(255,255,255,0.03);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      animation: fadeUp 0.2s ease-out;
+    }
+    .gain-panel.hidden { display: none; }
+
+    .gain-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .gain-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      min-width: 48px;
+    }
+    .gain-label svg { width: 14px; height: 14px; }
+
+    .gain-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--bg-tertiary);
+      outline: none;
+      cursor: pointer;
+    }
+    .gain-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--bg);
+      transition: transform 0.15s;
+    }
+    .gain-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    .gain-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--bg);
+    }
+
+    .gain-value {
+      font-size: 12px;
+      color: var(--text-secondary);
+      min-width: 52px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .volume-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      min-width: 48px;
+    }
+
+    .volume-meter {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--bg-tertiary);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .volume-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--success) 0%, var(--success) 55%, var(--warning) 75%, var(--danger) 100%);
+      transition: width 50ms linear;
+    }
+    .volume-meter.clipping .volume-fill { background: var(--danger); }
+
+    .volume-peak-mark {
+      position: absolute;
+      top: -1px; bottom: -1px;
+      width: 2px;
+      background: rgba(241,245,249,0.7);
+      border-radius: 1px;
+      left: 0%;
+      transition: left 50ms linear;
+    }
+
+    .volume-db {
+      font-size: 11px;
+      color: var(--text-secondary);
+      min-width: 56px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    }
+
     /* Input toolbar */
     .toolbar {
       display: flex;
@@ -685,6 +805,25 @@
       <span class="vad-dot"></span>
       <span id="vad-text">VAD: 空闲</span>
     </div>
+    <!-- Gain / volume control panel (shown when mic active) -->
+    <div class="gain-panel hidden" id="gain-panel">
+      <div class="gain-row">
+        <label class="gain-label" for="gain-slider">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          增益
+        </label>
+        <input type="range" id="gain-slider" min="0" max="100" value="50" class="gain-slider">
+        <span class="gain-value" id="gain-value">0.0 dB</span>
+      </div>
+      <div class="volume-row">
+        <span class="volume-label">音量</span>
+        <div class="volume-meter" id="volume-meter">
+          <div class="volume-fill" id="volume-fill"></div>
+          <div class="volume-peak-mark" id="volume-peak-mark"></div>
+        </div>
+        <span class="volume-db" id="volume-db">−∞ dB</span>
+      </div>
+    </div>
     <div class="toolbar" id="toolbar">
       <!-- Voice zone -->
       <div class="voice-zone" id="mic-btn" title="点击开始/停止语音输入">
@@ -836,9 +975,12 @@
       this.audioCtx = null;
       this.stream = null;
       this.sourceNode = null;
+      this.gainNode = null;
       this.captureNode = null;
       this.playbackNode = null;
       this.onAudioChunk = null; // callback(ArrayBuffer pcm16)
+      this.onVolumeUpdate = null; // callback({rms, peak, dB})
+      this._pendingGain = 1.0; // 默认增益 (unity)
     }
 
     async init() {
@@ -862,29 +1004,62 @@
       if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
 
       this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
       });
 
       this.sourceNode = this.audioCtx.createMediaStreamSource(this.stream);
+
+      // 增益节点：用户可调节输入增益
+      this.gainNode = this.audioCtx.createGain();
+      this.gainNode.gain.value = this._pendingGain;
+
       this.captureNode = new AudioWorkletNode(this.audioCtx, 'capture-processor');
 
       this.captureNode.port.onmessage = (e) => {
-        // e.data 是 ArrayBuffer (PCM16)
-        this.onAudioChunk?.(e.data);
+        if (e.data instanceof ArrayBuffer) {
+          // PCM16 音频数据
+          this.onAudioChunk?.(e.data);
+        } else if (e.data?.type === 'volume') {
+          // 实时音量数据
+          this.onVolumeUpdate?.(e.data);
+        }
       };
 
-      this.sourceNode.connect(this.captureNode);
+      // 信号链: 麦克风 → 增益 → 采集处理器
+      this.sourceNode.connect(this.gainNode);
+      this.gainNode.connect(this.captureNode);
       // 不连接 destination，避免回音
     }
 
     /** 停止采集 */
     stopCapture() {
       this.captureNode?.disconnect();
+      this.gainNode?.disconnect();
       this.sourceNode?.disconnect();
       this.stream?.getTracks().forEach(t => t.stop());
       this.captureNode = null;
+      this.gainNode = null;
       this.sourceNode = null;
       this.stream = null;
+    }
+
+    /**
+     * 设置麦克风输入增益
+     * @param {number} value 0-100 的增益滑块值
+     *   0 = 静音, 50 = 原始 (0dB), 100 = +12dB (4x)
+     */
+    setGain(value) {
+      const normalized = Math.max(0, value) / 50;
+      const gain = normalized * normalized; // 0→0, 50→1.0, 100→4.0
+      if (this.gainNode) {
+        this.gainNode.gain.setTargetAtTime(gain, this.audioCtx.currentTime, 0.015);
+      }
+      this._pendingGain = gain;
     }
 
     /** 播放 PCM16 音频 (base64 encoded) */
@@ -950,7 +1125,18 @@
         vadBar:       document.getElementById('vad-bar'),
         vadText:      document.getElementById('vad-text'),
         chat:         document.getElementById('chat'),
+        gainPanel:    document.getElementById('gain-panel'),
+        gainSlider:   document.getElementById('gain-slider'),
+        gainValue:    document.getElementById('gain-value'),
+        volumeMeter:  document.getElementById('volume-meter'),
+        volumeFill:   document.getElementById('volume-fill'),
+        volumePeak:   document.getElementById('volume-peak-mark'),
+        volumeDb:     document.getElementById('volume-db'),
       };
+
+      // Volume metering state
+      this._volumeRaf = 0;
+      this._lastVolumeData = null;
 
       this._bindEvents();
     }
@@ -978,6 +1164,9 @@
 
       // Global Markdown toggle
       this.$.mdToggle.addEventListener('click', () => this._toggleGlobalMarkdown());
+
+      // Gain slider
+      this.$.gainSlider.addEventListener('input', () => this._onGainChange());
     }
 
     /**
@@ -1003,6 +1192,11 @@
       }
 
       this.audio.onAudioChunk = (buf) => this._sendAudioChunk(buf);
+      this.audio.onVolumeUpdate = (data) => this._onVolumeUpdate(data);
+
+      // 恢复增益设置
+      this._restoreGain();
+
       this._connectWS();
     }
 
@@ -1029,7 +1223,7 @@
         this.reconnectAttempts = 0;
         this._setConnectionStatus('connected');
 
-        // 发送 session.update
+        // 发送 session.update（不发送 threshold 等参数，让服务端使用 .env 配置值）
         this._sendWS({
           type: 'session.update',
           session: {
@@ -1180,6 +1374,7 @@
         this.$.micBtn.classList.remove('active');
         this._setVAD(false);
         this._setInputMode('idle');
+        this._showGainPanel(false);
       } else {
         try {
           // Blur text input when switching to voice
@@ -1188,6 +1383,7 @@
           this.isListening = true;
           this.$.micBtn.classList.add('active');
           this._setInputMode('voice');
+          this._showGainPanel(true);
         } catch (err) {
           console.error('Mic error:', err);
           this._toast('无法访问麦克风：' + err.message, 'error');
@@ -1365,6 +1561,82 @@
     _setVAD(speaking) {
       this.$.vadBar.classList.toggle('speaking', speaking);
       this.$.vadText.textContent = speaking ? 'VAD: 检测到语音' : 'VAD: 空闲';
+    }
+
+    // ======================== Gain & Volume Control ========================
+
+    _showGainPanel(show) {
+      this.$.gainPanel.classList.toggle('hidden', !show);
+      if (!show) {
+        this.$.volumeFill.style.width = '0%';
+        this.$.volumePeak.style.left = '0%';
+        this.$.volumeDb.textContent = '\u2212\u221e dB';
+        this.$.volumeMeter.classList.remove('clipping');
+      }
+    }
+
+    _onGainChange() {
+      const value = parseInt(this.$.gainSlider.value, 10);
+      this.audio.setGain(value);
+      // 计算 dB 显示
+      if (value <= 0) {
+        this.$.gainValue.textContent = '\u2212\u221e dB';
+      } else {
+        const gain = (value / 50) ** 2;
+        const dB = 20 * Math.log10(gain);
+        this.$.gainValue.textContent = (dB >= 0 ? '+' : '') + dB.toFixed(1) + ' dB';
+      }
+      // 持久化
+      try { localStorage.setItem('voiceGain', String(value)); } catch {}
+    }
+
+    _restoreGain() {
+      try {
+        const saved = localStorage.getItem('voiceGain');
+        if (saved !== null) {
+          const value = Math.max(0, Math.min(100, parseInt(saved, 10) || 50));
+          this.$.gainSlider.value = value;
+          this.audio.setGain(value);
+          // 更新标签
+          if (value <= 0) {
+            this.$.gainValue.textContent = '\u2212\u221e dB';
+          } else {
+            const gain = (value / 50) ** 2;
+            const dB = 20 * Math.log10(gain);
+            this.$.gainValue.textContent = (dB >= 0 ? '+' : '') + dB.toFixed(1) + ' dB';
+          }
+        }
+      } catch {}
+    }
+
+    _onVolumeUpdate(data) {
+      this._lastVolumeData = data;
+      if (!this._volumeRaf) {
+        this._volumeRaf = requestAnimationFrame(() => {
+          this._volumeRaf = 0;
+          this._renderVolumeMeter();
+        });
+      }
+    }
+
+    _renderVolumeMeter() {
+      const data = this._lastVolumeData;
+      if (!data) return;
+      const { peak, dB } = data;
+
+      // RMS dB → 百分比 (映射范围: -60dB→0%, 0dB→100%)
+      const pct = Math.max(0, Math.min(100, (dB + 60) / 60 * 100));
+
+      // Peak dB → 百分比
+      const peakDb = peak > 1e-5 ? 20 * Math.log10(peak) : -100;
+      const peakPct = Math.max(0, Math.min(100, (peakDb + 60) / 60 * 100));
+
+      this.$.volumeFill.style.width = pct + '%';
+      this.$.volumePeak.style.left = peakPct + '%';
+      this.$.volumeDb.textContent = dB > -99 ? dB.toFixed(1) + ' dB' : '\u2212\u221e dB';
+
+      // 削波指示
+      this.$.volumeMeter.classList.toggle('clipping', peak > 0.98);
     }
 
     _scrollBottom() {
