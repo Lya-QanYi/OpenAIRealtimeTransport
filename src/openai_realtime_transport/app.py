@@ -241,9 +241,18 @@ def _parse_env_file(path: Path) -> dict[str, str]:
         key, _, value = line.partition("=")
         key = key.strip()
         value = value.strip()
-        # 去除可能的引号包裹
+        # 去除可能的引号包裹，并反转义（与 _format_env_value 对称）
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
             value = value[1:-1]
+            # 反转义：还原 _format_env_value 产生的转义序列
+            value = (
+                value.replace('\\$', '$')
+                     .replace('\\t', '\t')
+                     .replace('\\r', '\r')
+                     .replace('\\n', '\n')
+                     .replace('\\"', '"')
+                     .replace('\\\\', '\\')
+            )
         result[key] = value
     return result
 
@@ -376,7 +385,6 @@ async def save_config(request: Request):
         )
 
     # 校验：数值类型格式检查
-    _schema_map = {item["key"]: item for item in CONFIG_SCHEMA}
     int_fields = {"SERVER_PORT", "LLM_MAX_TOKENS", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS"}
     float_fields = {"LLM_TEMPERATURE", "VAD_THRESHOLD"}
     range_checks: dict[str, tuple[float, float]] = {
@@ -465,8 +473,8 @@ async def _handle_realtime_ws(websocket: WebSocket, model: str) -> None:
         await session.run()
     except WebSocketDisconnect:
         logger.info("客户端断开连接")
-    except Exception as e:
-        logger.exception(f"WebSocket 错误: {e}")
+    except Exception:
+        logger.exception("WebSocket 错误")
         try:
             await websocket.close(code=1011, reason="Internal server error")
         except (SystemExit, KeyboardInterrupt):
@@ -564,7 +572,7 @@ async def global_exception_handler(_request, exc):
     request_id = generate_id("err")
     
     # 记录完整的异常和堆栈跟踪
-    logger.exception(f"未处理的异常 [request_id={request_id}]: {exc}")
+    logger.exception("未处理的异常 [request_id=%s]", request_id)
     
     # 返回通用错误响应，不泄露内部细节
     return JSONResponse(
